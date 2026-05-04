@@ -39,11 +39,11 @@ export function PlaybackBar({
 }: Props) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
-      <div className="pointer-events-auto mx-auto grid max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 px-2.5 py-2 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-md sm:flex sm:gap-3 sm:px-3 dark:border-zinc-800/80 dark:bg-zinc-900/85 dark:shadow-black/30 dark:ring-white/[0.04]">
+      <div className="surface-floating pointer-events-auto mx-auto grid max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-2 px-2.5 py-2 sm:flex sm:gap-3 sm:px-3">
         <button
           type="button"
           onClick={onTogglePlay}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform hover:scale-105 active:scale-95 sm:h-10 sm:w-10 dark:bg-zinc-100 dark:text-zinc-900"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:w-10 dark:bg-zinc-100 dark:text-zinc-900"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
@@ -61,7 +61,7 @@ export function PlaybackBar({
           <button
             type="button"
             onClick={onSync}
-            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) hover:scale-[1.03] active:scale-[0.97] sm:order-none dark:bg-zinc-100 dark:text-zinc-900"
+            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:order-none dark:bg-zinc-100 dark:text-zinc-900 dark:hoverable:hover:bg-zinc-200"
             aria-label="Sync to current sentence"
           >
             SYNC
@@ -101,7 +101,7 @@ function SpeedButtons({
     <div className="relative flex w-full shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] sm:w-auto dark:bg-zinc-800/70 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)]">
       <span
         aria-hidden="true"
-        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
         style={{ width: 'calc((100% - 4px) / 5)', transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
       />
       {SPEEDS.map((s) => {
@@ -112,10 +112,10 @@ function SpeedButtons({
             type="button"
             onClick={() => onSpeedChange(s)}
             className={
-              'relative z-10 h-8 flex-1 rounded-full text-[11px] font-medium tabular-nums transition-[color,transform] duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:w-9 ' +
+              'relative z-10 h-8 flex-1 rounded-full text-[11px] font-medium tabular-nums transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:w-9 ' +
               (active
                 ? 'text-zinc-900 dark:text-zinc-50'
-                : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100')
+                : 'text-zinc-500 hoverable:hover:text-zinc-900 dark:text-zinc-400 dark:hoverable:hover:text-zinc-100')
             }
             aria-pressed={active}
             aria-label={`Playback speed ${s}×`}
@@ -191,7 +191,7 @@ function ReaderProgress({
   return (
     <div
       data-dragging={isDragging || undefined}
-      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hover:bg-zinc-800 dark:data-[dragging]:bg-zinc-800"
+      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-zinc-800 dark:data-[dragging]:bg-zinc-800"
     >
       <button
         type="button"
@@ -217,7 +217,7 @@ function ReaderProgress({
         }}
         onPointerCancel={() => setDragPct(null)}
       >
-        <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) group-hover/progress:h-2 group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-zinc-800 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] dark:group-hover/progress:bg-zinc-700 dark:group-data-[dragging]/progress:bg-zinc-700">
+        <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-zinc-800 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] dark:hoverable:group-hover/progress:bg-zinc-700 dark:group-data-[dragging]/progress:bg-zinc-700">
           <span
             className={
               'absolute inset-y-0 left-0 origin-left rounded-full bg-zinc-900 will-change-transform dark:bg-zinc-100 ' +
@@ -237,7 +237,7 @@ function ReaderProgress({
               'shadow-[0_1px_5px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ' +
               'dark:bg-zinc-100 dark:shadow-[0_1px_8px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.2)] ' +
               'transition-[opacity,transform] duration-200 ease-(--ease-out-strong) ' +
-              'group-hover/progress:opacity-100 ' +
+              'hoverable:group-hover/progress:opacity-100 ' +
               (isDragging ? 'scale-110 opacity-100' : 'scale-[0.85]')
             }
             style={{ left: `${displayPct}%` }}
@@ -249,7 +249,7 @@ function ReaderProgress({
         onClick={onToggleCounterMode}
         disabled={!progress.enabled}
         title={progress.enabled ? 'Toggle chapter / book progress' : undefined}
-        className="shrink-0 rounded-md px-1 py-1 text-[11px] tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) hover:text-zinc-900 active:scale-[0.96] disabled:cursor-default disabled:active:scale-100 sm:px-1.5 sm:text-xs dark:text-zinc-400 dark:hover:text-zinc-100"
+        className="shrink-0 rounded-md px-1 py-1 text-[11px] tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.96] hoverable:hover:text-zinc-900 disabled:cursor-default disabled:active:scale-100 sm:px-1.5 sm:text-xs dark:text-zinc-400 dark:hoverable:hover:text-zinc-100"
       >
         <span
           key={`${counterMode}-${progress.enabled}`}

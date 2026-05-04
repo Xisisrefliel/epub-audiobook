@@ -517,7 +517,12 @@ export default function App() {
       />
 
       {isLoadingBook && (
-        <div className="fixed inset-x-0 top-20 z-40 mx-auto w-fit rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 shadow-lg dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+        <div
+          role="status"
+          className="surface-floating fixed inset-x-0 top-20 z-40 mx-auto flex w-fit animate-(--animate-toast-in) items-center gap-2 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200"
+          style={{ transformOrigin: 'top center' }}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-400" />
           Opening EPUB…
         </div>
       )}

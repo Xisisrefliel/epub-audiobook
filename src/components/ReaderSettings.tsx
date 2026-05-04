@@ -31,43 +31,62 @@ export function ReaderSettings({
   mode,
   onModeChange,
 }: Props) {
-  const bottomSheet = useBottomSheetDrag({ open, onClose })
+  const { shouldRender, sheetRef, sheetStyle, sheetProps, backdropStyle, handleProps } =
+    useBottomSheetDrag({ open, onClose })
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-end sm:items-stretch" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-40 flex touch-none items-end justify-end overscroll-contain sm:items-stretch"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
       <div
-        className="absolute inset-0 bg-black/20 dark:bg-black/50"
+        className="absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55"
         aria-hidden
+        style={backdropStyle}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-full h-[40vh] bg-white sm:hidden dark:bg-zinc-950"
+        style={{ transform: sheetStyle.transform, willChange: sheetStyle.willChange }}
       />
       <aside
+        ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
-        style={bottomSheet.sheetStyle}
-        className={`relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-none sm:border-l sm:border-t-0 sm:p-6 sm:transition-none dark:border-zinc-800 dark:bg-zinc-950 ${bottomSheet.sheetClassName}`}
+        style={sheetStyle}
+        {...sheetProps}
+        className="relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950"
       >
         <div
-          {...bottomSheet.handleProps}
-          className="-mt-2 mb-3 flex touch-none cursor-grab justify-center px-6 pb-2 pt-1 active:cursor-grabbing sm:hidden"
+          {...handleProps}
+          className="flex touch-none cursor-grab justify-center px-6 pb-2 pt-3 active:cursor-grabbing sm:hidden"
           aria-label="Drag to close settings"
         >
           <div className="h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
         </div>
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Reader settings
-          </h2>
+        <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-5 dark:border-zinc-800">
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+              Reader settings
+            </h2>
+            <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+              Layout, theme, and typography
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-500 active:bg-zinc-100 sm:h-8 sm:w-8 dark:text-zinc-400 dark:active:bg-zinc-800"
+            className="control-button h-9 w-9"
             aria-label="Close settings"
           >
-            <X className="h-5 w-5" strokeWidth={2} />
+            <X className="h-4 w-4" strokeWidth={2} />
           </button>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:pt-6">
           <Group label="Layout">
             <Segmented
               options={[
@@ -132,7 +151,7 @@ function Group({
 }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-500">
         {label}
       </div>
       {children}
@@ -157,12 +176,16 @@ function Slider({
   unit?: string
   onChange: (n: number) => void
 }) {
+  const display = Number.isInteger(step) ? Math.round(value) : Math.round(value * 100) / 100
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-sm text-zinc-700 dark:text-zinc-300">{label}</span>
-        <span className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
-          {value}
+        <span
+          key={display}
+          className="inline-block animate-(--animate-label-in) text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+        >
+          {display}
           {unit ?? ''}
         </span>
       </div>
@@ -173,7 +196,8 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-8 w-full accent-zinc-900 dark:accent-zinc-100"
+        className="range-input"
+        aria-label={label}
       />
     </div>
   )
@@ -188,22 +212,36 @@ function Segmented({
   value: string
   onChange: (value: string) => void
 }) {
+  const activeIndex = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <div className="flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-900">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={
-            value === opt.value
-              ? 'flex-1 rounded-full bg-white px-3 py-2 text-zinc-900 shadow-sm sm:py-1.5 dark:bg-zinc-700 dark:text-zinc-50'
-              : 'flex-1 rounded-full px-3 py-2 text-zinc-600 hover:text-zinc-900 sm:py-1.5 dark:text-zinc-400 dark:hover:text-zinc-100'
-          }
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div className="relative flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-900">
+      <span
+        aria-hidden
+        className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        style={{
+          width: `calc((100% - 4px) / ${options.length})`,
+          transform: `translate3d(${activeIndex * 100}%, 0, 0)`,
+        }}
+      />
+      {options.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            aria-pressed={active}
+            className={
+              'relative z-10 flex-1 rounded-full px-3 py-2 transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] sm:py-1.5 ' +
+              (active
+                ? 'text-zinc-900 dark:text-zinc-50'
+                : 'text-zinc-500 hoverable:hover:text-zinc-900 dark:text-zinc-400 dark:hoverable:hover:text-zinc-100')
+            }
+          >
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

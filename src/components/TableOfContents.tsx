@@ -18,10 +18,6 @@ export function TableOfContents({
   onClose,
   onSelectChapter,
 }: Props) {
-  if (!open) return null
-
-  const bottomSheet = useBottomSheetDrag({ open, onClose })
-
   const toc = useMemo(
     () =>
       book.toc && book.toc.length > 0
@@ -34,31 +30,48 @@ export function TableOfContents({
     [book],
   )
 
+  const { shouldRender, sheetRef, sheetStyle, sheetProps, backdropStyle, handleProps } =
+    useBottomSheetDrag({ open, onClose })
+
+  if (!shouldRender) return null
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-end sm:items-stretch">
+    <div
+      className="fixed inset-0 z-50 flex touch-none items-end justify-end overscroll-contain sm:items-stretch"
+      role="dialog"
+      aria-modal="true"
+    >
       <button
         type="button"
         aria-label="Close table of contents"
-        className="absolute inset-0 bg-zinc-950/25 backdrop-blur-[1px] dark:bg-black/45"
+        className="absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55"
+        style={backdropStyle}
         onClick={onClose}
       />
 
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-full h-[40vh] bg-white sm:hidden dark:bg-zinc-950"
+        style={{ transform: sheetStyle.transform, willChange: sheetStyle.willChange }}
+      />
+
       <aside
-        style={bottomSheet.sheetStyle}
-        className={`relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 sm:transition-none dark:border-zinc-800 dark:bg-zinc-950 ${bottomSheet.sheetClassName}`}
+        style={sheetStyle}
+        {...sheetProps}
+        className="relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950"
       >
         <div
-          {...bottomSheet.handleProps}
+          {...handleProps}
           className="flex touch-none cursor-grab justify-center px-6 pb-2 pt-3 active:cursor-grabbing sm:hidden"
           aria-label="Drag to close table of contents"
         >
           <div className="h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
         </div>
-        <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-4 dark:border-zinc-800">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+        <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-5 dark:border-zinc-800">
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
               Contents
-            </div>
+            </h2>
             <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
               {book.title}
             </div>
@@ -67,13 +80,16 @@ export function TableOfContents({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors active:bg-zinc-100 active:text-zinc-900 sm:h-8 sm:w-8 dark:active:bg-zinc-800 dark:active:text-zinc-100"
+            className="control-button h-9 w-9"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" strokeWidth={2} />
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <nav
+          ref={sheetRef as React.RefObject<HTMLElement>}
+          className="flex-1 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        >
           <TocList
             items={toc}
             currentChapterIndex={currentChapterIndex}
@@ -109,10 +125,10 @@ const TocList = memo(function TocList({
               type="button"
               onClick={() => onSelect(item.chapterIndex)}
               className={
-                'w-full rounded-xl py-3 pr-3 text-left text-[15px] leading-5 transition-colors sm:rounded-lg sm:py-2 sm:text-sm ' +
+                'w-full rounded-xl py-3 pr-3 text-left text-[15px] leading-5 transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.99] sm:rounded-lg sm:py-2 sm:text-sm ' +
                 (active
-                  ? 'bg-amber-100 text-zinc-950 dark:bg-amber-400/15 dark:text-zinc-50'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100')
+                  ? 'bg-amber-200/70 text-zinc-950 dark:bg-amber-400/20 dark:text-zinc-50'
+                  : 'text-zinc-600 hoverable:hover:bg-zinc-100 hoverable:hover:text-zinc-950 dark:text-zinc-400 dark:hoverable:hover:bg-zinc-900 dark:hoverable:hover:text-zinc-100')
               }
               style={{ paddingLeft: `${12 + depth * 16}px` }}
             >

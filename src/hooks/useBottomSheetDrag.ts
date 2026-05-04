@@ -1,49 +1,365 @@
-import { useRef, useState, type PointerEvent } from 'react'
+import { useRef, useState, useEffect, useCallback, type PointerEvent } from 'react'
 
 type Options = {
   open: boolean
   onClose: () => void
 }
 
-const CLOSE_THRESHOLD = 96
-const VELOCITY_THRESHOLD = 0.45
+const CLOSE_DISTANCE = 120
+const FLING_VELOCITY = 650
+const ENGAGE_THRESHOLD = 6
+const VELOCITY_WINDOW_MS = 80
+
+function rubberBand(delta: number, dim = 120) {
+  if (!Number.isFinite(delta) || delta <= 0) return 0
+  return delta * 0.55 * Math.log10(1 + delta / dim)
+}
+
+function springTo({
+  from,
+  to,
+  stiffness = 420,
+  damping = 30,
+  mass = 1,
+  initialVelocity = 0,
+  onUpdate,
+  onComplete,
+}: {
+  from: number
+  to: number
+  stiffness?: number
+  damping?: number
+  mass?: number
+  initialVelocity?: number
+  onUpdate: (value: number) => void
+  onComplete?: () => void
+}) {
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    onUpdate(to)
+    onComplete?.()
+    return () => {}
+  }
+  let current = from
+  let velocity = Number.isFinite(initialVelocity) ? initialVelocity : 0
+  let rafId: number
+  let lastTime = performance.now()
+
+  const step = (now: number) => {
+    const dt = Math.min(0.064, Math.max(0.001, (now - lastTime) / 1000))
+    lastTime = now
+
+    const displacement = to - current
+    const springForce = displacement * stiffness
+    const dampingForce = velocity * damping
+    const acceleration = (springForce - dampingForce) / mass
+    velocity += acceleration * dt
+    current += velocity * dt
+
+    const isSettled = Math.abs(displacement) < 0.5 && Math.abs(velocity) < 0.5
+    if (isSettled) {
+      current = to
+      onUpdate(to)
+      onComplete?.()
+    } else {
+      onUpdate(current)
+      rafId = requestAnimationFrame(step)
+    }
+  }
+
+  rafId = requestAnimationFrame(step)
+  return () => cancelAnimationFrame(rafId)
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false,
+  )
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 639px)')
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [])
+
+  return isMobile
+}
+
+type Phase = 'idle' | 'pending' | 'dragging'
 
 export function useBottomSheetDrag({ open, onClose }: Options) {
-  const [dragY, setDragY] = useState(0)
+  const isMobile = useIsMobile()
+  const [shouldRender, setShouldRender] = useState(open)
+  const initialTranslateY = open ? 0 : typeof window !== 'undefined' ? window.innerHeight : 800
+  const translateYRef = useRef(initialTranslateY)
+  const [translateY, setTranslateY] = useState(initialTranslateY)
+  const [backdropOpacity, setBackdropOpacity] = useState(open ? 1 : 0)
+  const springCancelRef = useRef<(() => void) | null>(null)
+  const phaseRef = useRef<Phase>('idle')
   const startYRef = useRef(0)
-  const startTimeRef = useRef(0)
-  const draggingRef = useRef(false)
+  const startTranslateYRef = useRef(0)
+  const samplesRef = useRef<Array<{ t: number; y: number }>>([])
+  const sheetRef = useRef<HTMLElement | null>(null)
+  const closeVelocityRef = useRef(0)
+  const viewportHeightRef = useRef(typeof window !== 'undefined' ? window.innerHeight : 800)
+  const isMountedRef = useRef(true)
 
-  const onPointerDown = (event: PointerEvent<HTMLElement>) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    draggingRef.current = true
-    startYRef.current = event.clientY
-    startTimeRef.current = performance.now()
-    setDragY(0)
-    event.currentTarget.setPointerCapture(event.pointerId)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const updateVH = () => {
+      viewportHeightRef.current = window.innerHeight
+    }
+    window.addEventListener('resize', updateVH)
+    return () => window.removeEventListener('resize', updateVH)
+  }, [])
+
+  // Lock background scroll and listen for Escape while open
+  useEffect(() => {
+    if (!open) return
+    const body = document.body
+    const html = document.documentElement
+    const prevBody = body.style.overflow
+    const prevHtml = html.style.overflow
+    body.style.overflow = 'hidden'
+    html.style.overflow = 'hidden'
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+
+    return () => {
+      body.style.overflow = prevBody
+      html.style.overflow = prevHtml
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose])
+
+  const updateVisuals = useCallback((y: number) => {
+    if (!Number.isFinite(y)) return
+    translateYRef.current = y
+    setTranslateY(y)
+    const vh = viewportHeightRef.current || 1
+    const opacity = Math.max(0, Math.min(1, 1 - y / (vh * 0.5)))
+    setBackdropOpacity(opacity)
+  }, [])
+
+  const startSpring = useCallback(
+    (
+      from: number,
+      to: number,
+      onComplete?: () => void,
+      initialVelocity = 0,
+      tuning?: { stiffness?: number; damping?: number },
+    ) => {
+      springCancelRef.current?.()
+      const cancel = springTo({
+        from,
+        to,
+        stiffness: tuning?.stiffness ?? (to === 0 ? 450 : 380),
+        damping: tuning?.damping ?? (to === 0 ? 26 : 34),
+        initialVelocity,
+        onUpdate: updateVisuals,
+        onComplete: () => {
+          if (isMountedRef.current) onComplete?.()
+        },
+      })
+      springCancelRef.current = cancel
+    },
+    [updateVisuals],
+  )
+
+  // Mobile open/close spring animations
+  useEffect(() => {
+    if (!isMobile) return
+    if (open) {
+      startSpring(translateYRef.current, 0)
+    } else if (shouldRender) {
+      const v = closeVelocityRef.current
+      closeVelocityRef.current = 0
+      startSpring(
+        translateYRef.current,
+        viewportHeightRef.current,
+        () => {
+          if (isMountedRef.current) setShouldRender(false)
+        },
+        v,
+      )
+    }
+  }, [open, isMobile, shouldRender, startSpring])
+
+  // Mount immediately when open becomes true so the open animation can play
+  if (open && !shouldRender) {
+    setShouldRender(true)
   }
 
-  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
-    if (!draggingRef.current) return
-    setDragY(Math.max(0, event.clientY - startYRef.current))
-  }
+  // Cleanup spring on unmount
+  useEffect(() => {
+    return () => springCancelRef.current?.()
+  }, [])
 
-  const endDrag = (event: PointerEvent<HTMLElement>) => {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const delta = Math.max(0, event.clientY - startYRef.current)
-    const elapsed = Math.max(1, performance.now() - startTimeRef.current)
-    const velocity = delta / elapsed
-    setDragY(0)
-    if (delta > CLOSE_THRESHOLD || velocity > VELOCITY_THRESHOLD) onClose()
-  }
+  const pushSample = useCallback((t: number, y: number) => {
+    const samples = samplesRef.current
+    samples.push({ t, y })
+    const cutoff = t - VELOCITY_WINDOW_MS * 2
+    while (samples.length > 1 && samples[0].t < cutoff) samples.shift()
+  }, [])
+
+  const releaseVelocity = useCallback((nowT: number, nowY: number) => {
+    const samples = samplesRef.current
+    if (samples.length < 2) return 0
+    const target = nowT - VELOCITY_WINDOW_MS
+    let ref = samples[0]
+    for (const s of samples) {
+      if (s.t <= target) ref = s
+      else break
+    }
+    const dt = nowT - ref.t
+    if (dt < 8) return 0
+    return ((nowY - ref.y) / dt) * 1000 // px/s, downward positive
+  }, [])
+
+  const beginTracking = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      startYRef.current = event.clientY
+      startTranslateYRef.current = translateYRef.current
+      samplesRef.current = [{ t: event.timeStamp, y: event.clientY }]
+    },
+    [],
+  )
+
+  const commitDrag = useCallback((event: PointerEvent<HTMLElement>) => {
+    springCancelRef.current?.()
+    phaseRef.current = 'dragging'
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Some browsers throw if the pointer isn't capturable; ignore.
+    }
+  }, [])
+
+  // Handle: immediate engagement (no scroll-state check)
+  const onHandleDown = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!isMobile) return
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      beginTracking(event)
+      commitDrag(event)
+    },
+    [isMobile, beginTracking, commitDrag],
+  )
+
+  // Sheet body: tentative — only engage if scroll is at top and user pulls down
+  const onSheetDown = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!isMobile) return
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      const scrollTop = sheetRef.current?.scrollTop ?? 0
+      if (scrollTop > 0) return
+      beginTracking(event)
+      phaseRef.current = 'pending'
+    },
+    [isMobile, beginTracking],
+  )
+
+  const onPointerMove = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!isMobile) return
+      const phase = phaseRef.current
+      if (phase === 'idle') return
+
+      pushSample(event.timeStamp, event.clientY)
+      const delta = event.clientY - startYRef.current
+
+      if (phase === 'pending') {
+        // If content scrolled or user is moving up, this is a scroll, not a drag
+        const scrollTop = sheetRef.current?.scrollTop ?? 0
+        if (scrollTop > 0 || delta < -ENGAGE_THRESHOLD) {
+          phaseRef.current = 'idle'
+          return
+        }
+        if (delta > ENGAGE_THRESHOLD) {
+          commitDrag(event)
+        } else {
+          return
+        }
+      }
+
+      let newTranslateY: number
+      if (delta >= 0) {
+        // Pulling down — rubber-banded follow (existing dismiss feel)
+        newTranslateY = startTranslateYRef.current + rubberBand(delta)
+      } else {
+        const natural = startTranslateYRef.current + delta
+        if (natural >= 0) {
+          // Returning toward rest from a partially-dragged state — 1:1 follow
+          newTranslateY = natural
+        } else {
+          // Past rest — overdrag with tighter rubber-band
+          newTranslateY = -rubberBand(-natural, 80)
+        }
+      }
+      updateVisuals(newTranslateY)
+    },
+    [isMobile, commitDrag, pushSample, updateVisuals],
+  )
+
+  const endDrag = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!isMobile) return
+      const wasDragging = phaseRef.current === 'dragging'
+      phaseRef.current = 'idle'
+      if (!wasDragging) return
+
+      pushSample(event.timeStamp, event.clientY)
+      const velocity = releaseVelocity(event.timeStamp, event.clientY) // px/s
+      const y = translateYRef.current
+
+      const shouldClose =
+        y > CLOSE_DISTANCE ||
+        velocity > FLING_VELOCITY ||
+        (y > 40 && velocity > FLING_VELOCITY * 0.5)
+
+      if (shouldClose) {
+        closeVelocityRef.current = Math.max(velocity, 600)
+        onClose()
+      } else {
+        // Spring back home, carrying release velocity for a lively feel
+        startSpring(y, 0, undefined, velocity, { stiffness: 480, damping: 26 })
+      }
+    },
+    [isMobile, onClose, pushSample, releaseVelocity, startSpring],
+  )
 
   return {
-    dragY,
-    sheetStyle: open ? { transform: `translate3d(0, ${dragY}px, 0)` } : undefined,
-    sheetClassName: dragY > 0 ? 'transition-none' : 'transition-transform duration-200 ease-(--ease-out-strong)',
+    shouldRender: isMobile ? shouldRender : open,
+    sheetRef,
+    sheetStyle: {
+      transform: `translate3d(0, ${isMobile ? translateY : 0}px, 0)`,
+      willChange: isMobile ? 'transform' : undefined,
+      touchAction: isMobile ? 'pan-y' : undefined,
+    } as React.CSSProperties,
+    backdropStyle: {
+      opacity: isMobile ? backdropOpacity : 1,
+      willChange: isMobile ? 'opacity' : undefined,
+    } as React.CSSProperties,
     handleProps: {
-      onPointerDown,
+      onPointerDown: onHandleDown,
+      onPointerMove,
+      onPointerUp: endDrag,
+      onPointerCancel: endDrag,
+    },
+    sheetProps: {
+      onPointerDown: onSheetDown,
       onPointerMove,
       onPointerUp: endDrag,
       onPointerCancel: endDrag,

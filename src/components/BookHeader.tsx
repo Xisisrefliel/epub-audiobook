@@ -26,13 +26,13 @@ export function BookHeader({
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-30 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:pt-4">
-      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 px-2.5 py-2 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-md sm:gap-4 sm:px-4 sm:py-2.5 dark:border-zinc-800/80 dark:bg-zinc-900/85 dark:shadow-black/30 dark:ring-white/[0.04]">
+      <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 px-2.5 py-2 sm:gap-4 sm:px-4 sm:py-2.5">
         <button
           type="button"
           onClick={onOpenLibrary}
           aria-label="Open library"
           title="Open library"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-700 transition-colors active:bg-zinc-100 sm:h-9 sm:w-9 dark:text-zinc-200 dark:active:bg-zinc-800"
+          className="control-button h-9 w-9 sm:h-9 sm:w-9"
         >
           <Library className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
@@ -53,7 +53,7 @@ export function BookHeader({
           onClick={onOpenToc}
           aria-label="Table of contents"
           title="Table of contents"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-700 transition-colors active:bg-zinc-100 sm:h-9 sm:w-9 dark:text-zinc-200 dark:active:bg-zinc-800"
+          className="control-button h-9 w-9 sm:h-9 sm:w-9"
         >
           <List className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
@@ -62,7 +62,7 @@ export function BookHeader({
           type="button"
           onClick={onOpenSettings}
           aria-label="Reader settings"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-700 transition-colors active:bg-zinc-100 sm:h-9 sm:w-9 dark:text-zinc-200 dark:active:bg-zinc-800"
+          className="control-button h-9 w-9 sm:h-9 sm:w-9"
         >
           <Settings className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
@@ -78,18 +78,16 @@ function ModeToggle({
   mode: ReaderMode
   onChange: (mode: ReaderMode) => void
 }) {
+  const activeIndex = mode === 'scroll' ? 0 : 1
   return (
-    <div className="hidden rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-900 sm:flex">
-      <ModeButton
-        active={mode === 'scroll'}
-        onClick={() => onChange('scroll')}
-        label="Scroll"
+    <div className="relative hidden rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-900 sm:flex">
+      <span
+        aria-hidden
+        className="absolute left-0.5 top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        style={{ transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
       />
-      <ModeButton
-        active={mode === 'paginated'}
-        onClick={() => onChange('paginated')}
-        label="Pages"
-      />
+      <ModeButton active={mode === 'scroll'} onClick={() => onChange('scroll')} label="Scroll" />
+      <ModeButton active={mode === 'paginated'} onClick={() => onChange('paginated')} label="Pages" />
     </div>
   )
 }
@@ -107,10 +105,12 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={
-        active
-          ? 'rounded-full bg-white px-3 py-1 text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50'
-          : 'rounded-full px-3 py-1 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
+        'relative z-10 rounded-full px-3 py-1 transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.96] ' +
+        (active
+          ? 'text-zinc-900 dark:text-zinc-50'
+          : 'text-zinc-500 hoverable:hover:text-zinc-900 dark:text-zinc-400 dark:hoverable:hover:text-zinc-100')
       }
     >
       {label}

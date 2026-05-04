@@ -11,10 +11,10 @@ type Props = {
   onSelectBook: (bookId: string) => void
 }
 
-const STAGGER_MS = 40
-const STAGGER_BASE_MS = 80
-const STAGGER_MAX_MS = 480
-const EXIT_MS = 220
+const STAGGER_MS = 30
+const STAGGER_BASE_MS = 60
+const STAGGER_MAX_MS = 280
+const EXIT_MS = 200
 
 export function BookLibrary({
   open,
@@ -49,7 +49,7 @@ export function BookLibrary({
       <button
         type="button"
         aria-label="Close library"
-        className={`absolute inset-0 bg-black/30 backdrop-blur-sm ${
+        className={`absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55 ${
           closing ? 'animate-library-backdrop-out' : 'animate-library-backdrop-in'
         }`}
         onClick={onClose}
@@ -58,7 +58,7 @@ export function BookLibrary({
         className={`absolute inset-x-3 top-20 mx-auto max-w-4xl rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:p-6 ${
           closing ? 'animate-library-panel-out' : 'animate-library-panel-in'
         }`}
-        style={{ transformOrigin: 'top center' }}
+        style={{ transformOrigin: 'top left' }}
       >
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
@@ -68,7 +68,7 @@ export function BookLibrary({
           <button
             type="button"
             onClick={onAddBook}
-            className="inline-flex items-center gap-2 rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out active:scale-[0.96] hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            className="inline-flex items-center gap-2 rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-(--ease-out-strong) active:scale-[0.96] hoverable:hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-zinc-200"
           >
             <Plus className="h-4 w-4" />
             Add EPUB
@@ -84,13 +84,13 @@ export function BookLibrary({
                 key={book.id}
                 type="button"
                 onClick={() => onSelectBook(book.id)}
-                className={`group rounded-2xl p-2 text-left transition-[transform,background-color] duration-150 ease-out active:scale-[0.96] hover:bg-zinc-100 data-[active=true]:bg-zinc-100 dark:hover:bg-zinc-900 dark:data-[active=true]:bg-zinc-900 ${
+                className={`group rounded-2xl p-2 text-left transition-[transform,background-color] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:bg-zinc-100 data-[active=true]:bg-zinc-100 dark:hoverable:hover:bg-zinc-900 dark:data-[active=true]:bg-zinc-900 ${
                   closing ? 'animate-library-card-out' : 'animate-library-card-in'
                 }`}
                 data-active={active}
                 style={{ animationDelay: `${delay}ms` }}
               >
-                <div className="aspect-[2/3] overflow-hidden rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-300 shadow-sm outline outline-1 -outline-offset-1 outline-black/10 dark:from-zinc-800 dark:to-zinc-950 dark:outline-white/10">
+                <div className="aspect-[2/3] overflow-hidden rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-300 shadow-sm outline outline-1 -outline-offset-1 outline-black/10 transition-transform duration-300 ease-(--ease-out-strong) group-data-[active=true]:scale-[1.01] hoverable:group-hover:scale-[1.015] dark:from-zinc-800 dark:to-zinc-950 dark:outline-white/10">
                   {book.coverUrl ? (
                     <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
                   ) : (

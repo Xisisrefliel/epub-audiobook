@@ -287,10 +287,10 @@ export function ReaderScroll({
                       }
                     }}
                     className={
-                      'cursor-pointer rounded-sm py-1.5 box-decoration-clone transition-colors duration-200 ' +
+                      'cursor-pointer rounded-sm py-1.5 box-decoration-clone transition-colors duration-200 ease-(--ease-out-strong) ' +
                       (isActive
                         ? 'text-zinc-900 dark:text-zinc-50'
-                        : 'hover:text-zinc-900 dark:hover:text-zinc-50')
+                        : 'hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50')
                     }
                   >
                     {pi > 0 ? ' ' : null}

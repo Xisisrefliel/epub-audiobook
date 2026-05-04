@@ -38,12 +38,12 @@ export function PlaybackBar({
   onProgressSeek,
 }: Props) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-4 sm:pb-4">
-      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white/85 px-3 py-2 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:shadow-black/30 dark:ring-white/[0.04]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
+      <div className="pointer-events-auto mx-auto grid max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 px-2.5 py-2 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-md sm:flex sm:gap-3 sm:px-3 dark:border-zinc-800/80 dark:bg-zinc-900/85 dark:shadow-black/30 dark:ring-white/[0.04]">
         <button
           type="button"
           onClick={onTogglePlay}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform hover:scale-105 active:scale-95 dark:bg-zinc-100 dark:text-zinc-900"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform hover:scale-105 active:scale-95 sm:h-10 sm:w-10 dark:bg-zinc-100 dark:text-zinc-900"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
@@ -53,13 +53,15 @@ export function PlaybackBar({
           )}
         </button>
 
-        <SpeedButtons speed={speed} onSpeedChange={onSpeedChange} />
+        <div className="order-3 col-span-3 sm:order-none sm:col-span-1">
+          <SpeedButtons speed={speed} onSpeedChange={onSpeedChange} />
+        </div>
 
         {canSync && (
           <button
             type="button"
             onClick={onSync}
-            className="shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) hover:scale-[1.03] active:scale-[0.97] dark:bg-zinc-100 dark:text-zinc-900"
+            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) hover:scale-[1.03] active:scale-[0.97] sm:order-none dark:bg-zinc-100 dark:text-zinc-900"
             aria-label="Sync to current sentence"
           >
             SYNC
@@ -96,11 +98,11 @@ function SpeedButtons({
   const activeIndex = Math.max(0, SPEEDS.indexOf(speed))
 
   return (
-    <div className="relative flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] dark:bg-zinc-800/70 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)]">
+    <div className="relative flex w-full shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] sm:w-auto dark:bg-zinc-800/70 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)]">
       <span
         aria-hidden="true"
-        className="absolute left-0.5 top-0.5 h-8 w-9 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
-        style={{ transform: `translate3d(${activeIndex * 38}px, 0, 0)` }}
+        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        style={{ width: 'calc((100% - 4px) / 5)', transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
       />
       {SPEEDS.map((s) => {
         const active = s === speed
@@ -110,7 +112,7 @@ function SpeedButtons({
             type="button"
             onClick={() => onSpeedChange(s)}
             className={
-              'relative z-10 h-8 w-9 rounded-full text-[11px] font-medium tabular-nums transition-[color,transform] duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] ' +
+              'relative z-10 h-8 flex-1 rounded-full text-[11px] font-medium tabular-nums transition-[color,transform] duration-100 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:w-9 ' +
               (active
                 ? 'text-zinc-900 dark:text-zinc-50'
                 : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100')
@@ -189,7 +191,7 @@ function ReaderProgress({
   return (
     <div
       data-dragging={isDragging || undefined}
-      className="group/progress flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hover:bg-zinc-100 data-[dragging]:bg-zinc-100 dark:hover:bg-zinc-800 dark:data-[dragging]:bg-zinc-800"
+      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hover:bg-zinc-800 dark:data-[dragging]:bg-zinc-800"
     >
       <button
         type="button"
@@ -247,7 +249,7 @@ function ReaderProgress({
         onClick={onToggleCounterMode}
         disabled={!progress.enabled}
         title={progress.enabled ? 'Toggle chapter / book progress' : undefined}
-        className="shrink-0 rounded-md px-1.5 py-1 text-xs tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) hover:text-zinc-900 active:scale-[0.96] disabled:cursor-default disabled:active:scale-100 dark:text-zinc-400 dark:hover:text-zinc-100"
+        className="shrink-0 rounded-md px-1 py-1 text-[11px] tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) hover:text-zinc-900 active:scale-[0.96] disabled:cursor-default disabled:active:scale-100 sm:px-1.5 sm:text-xs dark:text-zinc-400 dark:hover:text-zinc-100"
       >
         <span
           key={`${counterMode}-${progress.enabled}`}

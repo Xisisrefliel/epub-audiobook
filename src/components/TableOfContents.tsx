@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { X } from 'lucide-react'
+import { useBottomSheetDrag } from '../hooks/useBottomSheetDrag'
 import type { Book, TocItem } from '../types'
 
 type Props = {
@@ -19,6 +20,8 @@ export function TableOfContents({
 }: Props) {
   if (!open) return null
 
+  const bottomSheet = useBottomSheetDrag({ open, onClose })
+
   const toc = useMemo(
     () =>
       book.toc && book.toc.length > 0
@@ -32,16 +35,26 @@ export function TableOfContents({
   )
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-end justify-end sm:items-stretch">
       <button
         type="button"
         aria-label="Close table of contents"
-        className="absolute inset-0 bg-zinc-950/20 dark:bg-black/40"
+        className="absolute inset-0 bg-zinc-950/25 backdrop-blur-[1px] dark:bg-black/45"
         onClick={onClose}
       />
 
-      <aside className="absolute bottom-0 right-0 top-0 flex w-full max-w-sm flex-col border-l border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-l-2xl">
-        <div className="flex items-start gap-3 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+      <aside
+        style={bottomSheet.sheetStyle}
+        className={`relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 sm:transition-none dark:border-zinc-800 dark:bg-zinc-950 ${bottomSheet.sheetClassName}`}
+      >
+        <div
+          {...bottomSheet.handleProps}
+          className="flex touch-none cursor-grab justify-center px-6 pb-2 pt-3 active:cursor-grabbing sm:hidden"
+          aria-label="Drag to close table of contents"
+        >
+          <div className="h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+        </div>
+        <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-4 dark:border-zinc-800">
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
               Contents
@@ -54,13 +67,13 @@ export function TableOfContents({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors active:bg-zinc-100 active:text-zinc-900 sm:h-8 sm:w-8 dark:active:bg-zinc-800 dark:active:text-zinc-100"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        <nav className="flex-1 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <TocList
             items={toc}
             currentChapterIndex={currentChapterIndex}
@@ -96,7 +109,7 @@ const TocList = memo(function TocList({
               type="button"
               onClick={() => onSelect(item.chapterIndex)}
               className={
-                'w-full rounded-lg py-2 pr-3 text-left text-sm transition-colors ' +
+                'w-full rounded-xl py-3 pr-3 text-left text-[15px] leading-5 transition-colors sm:rounded-lg sm:py-2 sm:text-sm ' +
                 (active
                   ? 'bg-amber-100 text-zinc-950 dark:bg-amber-400/15 dark:text-zinc-50'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100')

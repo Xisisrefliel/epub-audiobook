@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ActiveWord, Book, Chapter, PaginationInfo } from '../types'
 import { measureParagraphLines, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
@@ -9,12 +9,16 @@ const PARAGRAPH_GAP_LINES = 1
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 const COL_GAP_PX = 64
 const MAX_COLS = 2
-const VIEWPORT_CHROME_PX = 280
+const DESKTOP_VIEWPORT_CHROME_PX = 280
+const MOBILE_VIEWPORT_CHROME_PX = 340
+const MOBILE_BREAKPOINT_PX = 640
+const SWIPE_THRESHOLD_PX = 44
 
 type LineFragment = {
   paragraphId: string
   parts: TextPart[]
   startsParagraph: boolean
+  endsParagraph: boolean
 }
 type Column = { lines: LineFragment[] }
 type Page = { columns: Column[]; sentenceIds: Set<string>; firstSentenceId: string | null }
@@ -57,7 +61,10 @@ export function ReaderPaginated({
   const articleRef = useRef<HTMLElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
   const [pageHeight, setPageHeight] = useState(0)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT_PX)
   const [pageIndex, setPageIndex] = useState(0)
+  const pageFontSize = isMobile ? Math.min(fontSize, 22) : fontSize
+  const pageLineHeight = isMobile ? Math.max(lineHeight, 1.55) : lineHeight
   const suppressNextAnchorSyncRef = useRef(false)
 
   useLayoutEffect(() => {
@@ -71,8 +78,11 @@ export function ReaderPaginated({
   }, [])
 
   useLayoutEffect(() => {
-    const update = () =>
-      setPageHeight(Math.max(400, window.innerHeight - VIEWPORT_CHROME_PX))
+    const update = () => {
+      const mobile = window.innerWidth < MOBILE_BREAKPOINT_PX
+      setIsMobile(mobile)
+      setPageHeight(Math.max(360, window.innerHeight - (mobile ? MOBILE_VIEWPORT_CHROME_PX : DESKTOP_VIEWPORT_CHROME_PX)))
+    }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -80,37 +90,38 @@ export function ReaderPaginated({
 
   const layoutInfo = useMemo(() => {
     if (!containerWidth) return null
-    const targetColPx = measure * fontSize * 0.5
+    const availableWidth = Math.max(1, containerWidth - (isMobile ? 28 : 0))
+    const targetColPx = Math.min(measure, isMobile ? 60 : measure) * pageFontSize * 0.5
     const fits = Math.floor(
-      (containerWidth + COL_GAP_PX) / (targetColPx + COL_GAP_PX),
+      (availableWidth + COL_GAP_PX) / (targetColPx + COL_GAP_PX),
     )
-    const colCount = Math.max(1, Math.min(MAX_COLS, fits))
+    const colCount = isMobile ? 1 : Math.max(1, Math.min(MAX_COLS, fits))
     const columnWidth = Math.min(
       targetColPx,
-      (containerWidth - COL_GAP_PX * (colCount - 1)) / colCount,
+      (availableWidth - COL_GAP_PX * (colCount - 1)) / colCount,
     )
     const articleWidth =
       columnWidth * colCount + COL_GAP_PX * (colCount - 1)
     return { colCount, columnWidth, articleWidth }
-  }, [containerWidth, fontSize, measure])
+  }, [containerWidth, isMobile, measure, pageFontSize])
 
   const chapterTotal = useMemo(() => {
     if (!layoutInfo || !pageHeight) return 0
-    return getCachedChapterPageCount(chapter, layoutInfo, pageHeight, fontSize, lineHeight)
-  }, [chapter, fontSize, lineHeight, layoutInfo, pageHeight])
+    return getCachedChapterPageCount(chapter, layoutInfo, pageHeight, pageFontSize, pageLineHeight)
+  }, [chapter, layoutInfo, pageFontSize, pageHeight, pageLineHeight])
 
   const currentPage = useMemo(() => {
     if (!layoutInfo || !pageHeight || chapterTotal === 0) return undefined
     const clamped = Math.max(0, Math.min(pageIndex, chapterTotal - 1))
-    return getCachedChapterPage(chapter, clamped, layoutInfo, pageHeight, fontSize, lineHeight)
-  }, [chapter, chapterTotal, fontSize, lineHeight, layoutInfo, pageHeight, pageIndex])
+    return getCachedChapterPage(chapter, clamped, layoutInfo, pageHeight, pageFontSize, pageLineHeight)
+  }, [chapter, chapterTotal, layoutInfo, pageFontSize, pageHeight, pageIndex, pageLineHeight])
 
   const chapterPageCounts = useMemo(() => {
     if (!layoutInfo || !pageHeight) return null
     return book.chapters.map((ch) =>
-      getCachedChapterPageCount(ch, layoutInfo, pageHeight, fontSize, lineHeight),
+      getCachedChapterPageCount(ch, layoutInfo, pageHeight, pageFontSize, pageLineHeight),
     )
-  }, [book, fontSize, lineHeight, layoutInfo, pageHeight])
+  }, [book, layoutInfo, pageFontSize, pageHeight, pageLineHeight])
 
   const bookPageOffset = chapterPageCounts
     ? chapterPageCounts.slice(0, chapterIndex).reduce((sum, count) => sum + count, 0)
@@ -145,17 +156,19 @@ export function ReaderPaginated({
     }
     const anchorId = currentSentenceId ?? locationSentenceId
     if (!anchorId || !layoutInfo || !pageHeight || chapterTotal === 0) return
-    const idx = findPageIndexForSentence(chapter, anchorId, layoutInfo, pageHeight, fontSize, lineHeight)
+    const idx = findPageIndexForSentence(chapter, anchorId, layoutInfo, pageHeight, pageFontSize, pageLineHeight)
     if (idx >= 0) setPageIndex((prev) => (prev === idx ? prev : idx))
-  }, [chapter, chapterTotal, currentSentenceId, fontSize, lineHeight, locationSentenceId, layoutInfo, pageHeight, syncKey])
+  }, [chapter, chapterTotal, currentSentenceId, locationSentenceId, layoutInfo, pageFontSize, pageHeight, pageLineHeight, syncKey])
 
   useEffect(() => {
     if (chapterTotal > 0 && pageIndex >= chapterTotal) setPageIndex(chapterTotal - 1)
   }, [chapterTotal, pageIndex])
 
+  const touchStartXRef = useRef<number | null>(null)
+
   const goToPage = (nextIndex: number) => {
     const clamped = Math.max(0, Math.min(nextIndex, chapterTotal - 1))
-    const page = layoutInfo && pageHeight ? getCachedChapterPage(chapter, clamped, layoutInfo, pageHeight, fontSize, lineHeight) : undefined
+    const page = layoutInfo && pageHeight ? getCachedChapterPage(chapter, clamped, layoutInfo, pageHeight, pageFontSize, pageLineHeight) : undefined
     suppressNextAnchorSyncRef.current = true
     setPageIndex(clamped)
     onSentenceSelect(null)
@@ -170,7 +183,7 @@ export function ReaderPaginated({
     if (chapterIndex > 0) {
       const prevChapter = book.chapters[chapterIndex - 1]
       const prevTotal = layoutInfo && pageHeight
-        ? getCachedChapterPageCount(prevChapter, layoutInfo, pageHeight, fontSize, lineHeight)
+        ? getCachedChapterPageCount(prevChapter, layoutInfo, pageHeight, pageFontSize, pageLineHeight)
         : 1
       setPageIndex(Math.max(0, prevTotal - 1))
       onChapterChange(chapterIndex - 1, 'end')
@@ -199,18 +212,37 @@ export function ReaderPaginated({
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  const onPagePointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse') return
+    touchStartXRef.current = event.clientX
+  }
+
+  const onPagePointerUp = (event: PointerEvent<HTMLElement>) => {
+    if (touchStartXRef.current === null) return
+    const delta = event.clientX - touchStartXRef.current
+    touchStartXRef.current = null
+    if (Math.abs(delta) < SWIPE_THRESHOLD_PX) return
+    if (delta < 0) goNext()
+    else goPrev()
+  }
+
   return (
-    <div ref={containerRef} className="px-8 pt-20 pb-28">
+    <div ref={containerRef} className="px-4 pb-48 pt-20 sm:px-8 sm:pb-28">
       <div
         className="mx-auto"
         style={{ width: layoutInfo?.articleWidth ?? 'auto', maxWidth: '100%' }}
       >
         <article
           ref={articleRef}
-          className="relative isolate text-zinc-700 dark:text-zinc-300"
+          onPointerDown={onPagePointerDown}
+          onPointerUp={onPagePointerUp}
+          onPointerCancel={() => {
+            touchStartXRef.current = null
+          }}
+          className="relative isolate rounded-2xl bg-white/40 px-1 text-zinc-700 touch-pan-y sm:rounded-none sm:bg-transparent sm:px-0 dark:bg-zinc-900/20 dark:text-zinc-300"
           style={{
-            fontSize: `${fontSize}px`,
-            lineHeight,
+            fontSize: `${pageFontSize}px`,
+            lineHeight: pageLineHeight,
             height: pageHeight || undefined,
             fontFamily: SERIF_STACK,
           }}
@@ -218,8 +250,8 @@ export function ReaderPaginated({
           <SentenceHighlight
             activeId={currentSentenceId}
             articleRef={articleRef}
-            fontSize={fontSize}
-            refreshKey={`pages-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${fontSize}-${lineHeight}-${measure}`}
+            fontSize={pageFontSize}
+            refreshKey={`pages-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${pageFontSize}-${pageLineHeight}-${measure}`}
           />
           <WordHighlight
             activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
@@ -239,7 +271,8 @@ export function ReaderPaginated({
                   {col.lines.map((line, li) => (
                     <div
                       key={`${line.paragraphId}-${li}`}
-                      style={{ marginTop: li > 0 && line.startsParagraph ? `${fontSize * lineHeight * PARAGRAPH_GAP_LINES}px` : undefined }}
+                      className={line.endsParagraph ? 'whitespace-nowrap' : 'whitespace-nowrap text-justify [text-align-last:justify]'}
+                      style={{ marginTop: li > 0 && line.startsParagraph ? `${pageFontSize * pageLineHeight * PARAGRAPH_GAP_LINES}px` : undefined }}
                     >
                       {line.parts.map((part, pi) => {
                         const isActive = part.id === currentSentenceId
@@ -267,6 +300,7 @@ export function ReaderPaginated({
                                 : 'hover:text-zinc-900 dark:hover:text-zinc-50')
                             }
                           >
+                            {pi > 0 ? ' ' : null}
                             <HighlightedText part={part} activeWord={activeWord} />
                           </span>
                         )
@@ -279,7 +313,7 @@ export function ReaderPaginated({
           )}
         </article>
 
-        <PageNav onPrev={goPrev} onNext={goNext} />
+        <PageNav onPrev={goPrev} onNext={goNext} pageIndex={pageIndex} chapterTotal={chapterTotal} />
       </div>
     </div>
   )
@@ -438,7 +472,7 @@ function paginateChapterPage(
 
   for (const para of chapter.paragraphs) {
     let done = false
-    walkParagraphLineParts(para, font, columnWidth, ({ parts, lineIndex }) => {
+    walkParagraphLineParts(para, font, columnWidth, ({ parts, lineIndex, endsParagraph }) => {
       const startsParagraph = lineIndex === 0
       const gap = colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0
       if (colUsed + gap + 1 > maxLines) advanceColumn()
@@ -447,7 +481,7 @@ function paginateChapterPage(
         return false
       }
       if (pageIndex === targetPageIndex) {
-        const line = { paragraphId: para.id, parts, startsParagraph }
+        const line = { paragraphId: para.id, parts, startsParagraph, endsParagraph }
         page.columns[colIdx].lines.push(line)
         parts.forEach((p) => {
           if (!page.firstSentenceId) page.firstSentenceId = p.id
@@ -506,30 +540,39 @@ function findPageIndexForSentence(
 function PageNav({
   onPrev,
   onNext,
+  pageIndex,
+  chapterTotal,
 }: {
   onPrev: () => void
   onNext: () => void
+  pageIndex: number
+  chapterTotal: number
 }) {
   return (
-    <div className="mt-8 flex items-center justify-between text-sm text-zinc-500 dark:text-zinc-400">
-      <button
-        type="button"
-        onClick={onPrev}
-        aria-label="Previous page"
-        className="flex items-center gap-1 rounded-md px-2 py-1 transition-[color,transform] duration-200 ease-out hover:text-zinc-900 active:scale-[0.96] dark:hover:text-zinc-100"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Prev
-      </button>
-      <button
-        type="button"
-        onClick={onNext}
-        aria-label="Next page"
-        className="flex items-center gap-1 rounded-md px-2 py-1 transition-[color,transform] duration-200 ease-out hover:text-zinc-900 active:scale-[0.96] dark:hover:text-zinc-100"
-      >
-        Next
-        <ChevronRight className="h-4 w-4" />
-      </button>
+    <div className="pointer-events-none fixed inset-x-0 bottom-[10.25rem] z-20 px-4 sm:bottom-24 sm:px-8">
+      <div className="pointer-events-auto mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <button
+          type="button"
+          onClick={onPrev}
+          aria-label="Previous page"
+          className="flex h-11 items-center justify-center gap-1 rounded-full bg-zinc-900/5 px-3 backdrop-blur transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] dark:bg-white/5"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Prev
+        </button>
+        <div className="rounded-full bg-zinc-900/5 px-3 py-1.5 text-xs tabular-nums text-zinc-500 backdrop-blur dark:bg-white/5 dark:text-zinc-400">
+          {chapterTotal > 0 ? `${Math.min(pageIndex + 1, chapterTotal)} / ${chapterTotal}` : '—'}
+        </div>
+        <button
+          type="button"
+          onClick={onNext}
+          aria-label="Next page"
+          className="flex h-11 items-center justify-center gap-1 rounded-full bg-zinc-900 px-3 text-white shadow-sm transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }

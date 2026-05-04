@@ -58,11 +58,12 @@ export function walkParagraphLineParts(
   para: Paragraph,
   font: string,
   width: number,
-  onLine: (line: { parts: TextPart[]; lineIndex: number }) => void | false,
+  onLine: (line: { parts: TextPart[]; lineIndex: number; endsParagraph: boolean }) => void | false,
 ) {
   const text = getParagraphText(para)
   const ranges = getSentenceRanges(para)
   const prepared = getPreparedParagraph(para, font)
+  const lines: { parts: TextPart[]; lineIndex: number }[] = []
   let offset = 0
   let lineIndex = 0
 
@@ -89,12 +90,16 @@ export function walkParagraphLineParts(
       })
       .filter((part): part is TextPart => part !== null)
 
-    const shouldContinue = onLine({ parts, lineIndex })
-    if (shouldContinue === false) break
+    lines.push({ parts, lineIndex })
 
     offset = lineEnd
     while (text[offset] === ' ') offset++
     lineIndex++
     cursor = lineRange.end
+  }
+
+  for (const [index, line] of lines.entries()) {
+    const shouldContinue = onLine({ ...line, endsParagraph: index === lines.length - 1 })
+    if (shouldContinue === false) break
   }
 }

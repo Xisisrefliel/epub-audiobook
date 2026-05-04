@@ -25,6 +25,7 @@ type LineFragment = {
   parts: TextPart[]
   startsParagraph: boolean
   startsChapter: boolean
+  endsParagraph: boolean
 }
 
 type Props = {
@@ -225,7 +226,7 @@ export function ReaderScroll({
   }, [lines, locationSentenceId, onLocationChange])
 
   return (
-    <div className="px-6 pb-40 pt-24">
+    <div className="px-4 pb-52 pt-24 sm:px-6 sm:pb-40">
       <article
         ref={articleRef}
         className="relative isolate mx-auto text-zinc-700 dark:text-zinc-300"
@@ -262,6 +263,7 @@ export function ReaderScroll({
                 </h1>
               )}
               <div
+                className={line.endsParagraph ? 'whitespace-nowrap' : 'whitespace-nowrap text-justify [text-align-last:justify]'}
                 style={{ marginTop: li > 0 && line.startsParagraph && !line.startsChapter ? `${fontSize * lineHeight}px` : undefined }}
               >
               {line.parts.map((part, pi) => {
@@ -291,6 +293,7 @@ export function ReaderScroll({
                         : 'hover:text-zinc-900 dark:hover:text-zinc-50')
                     }
                   >
+                    {pi > 0 ? ' ' : null}
                     <HighlightedText part={part} activeWord={activeWord} />
                   </span>
                 )
@@ -370,7 +373,7 @@ function getCachedScrollLines(book: Book, contentWidth: number, fontSize: number
           normalizeTitle(paragraphText) === normalizeTitle(chapter.title)
         if (isDuplicateHeading) continue
 
-        walkParagraphLineParts(para, font, contentWidth, ({ parts, lineIndex }) => {
+        walkParagraphLineParts(para, font, contentWidth, ({ parts, lineIndex, endsParagraph }) => {
           out.push({
             paragraphId: para.id,
             chapterId: chapter.id,
@@ -378,6 +381,7 @@ function getCachedScrollLines(book: Book, contentWidth: number, fontSize: number
             parts,
             startsParagraph: lineIndex === 0,
             startsChapter: startsChapter && lineIndex === 0,
+            endsParagraph,
           })
         })
       }

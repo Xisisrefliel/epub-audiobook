@@ -9,6 +9,7 @@ import { BookLibrary } from './components/BookLibrary'
 import { sampleBook } from './data/sampleChapter'
 import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech } from './tts/kokoroTts'
+import type { TtsAudio } from './tts/kokoroTts'
 import type { ActiveWord, Book, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
@@ -19,6 +20,8 @@ const ACTIVE_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}activeBookId`
 const PROGRESS_STORAGE_KEY = `${STORAGE_PREFIX}progress`
 const PROGRESS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}progressByBook`
 const SETTINGS_STORAGE_KEY = `${STORAGE_PREFIX}settings`
+const PREFETCH_AHEAD_SENTENCES = 4
+const BUFFERING_DELAY_MS = 350
 
 type StoredProgress = {
   chapterIndex?: number
@@ -131,12 +134,16 @@ export default function App() {
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo | null>(null)
   const [counterMode, setCounterMode] = useState<CounterMode>(initialProgress.counterMode === 'book' ? 'book' : 'chapter')
   const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null)
+  const [syncKey, setSyncKey] = useState(0)
   const scrollRequestKeyRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playbackRunRef = useRef(0)
   const speedRef = useRef(speed)
   const wordFrameRef = useRef(0)
+  const prefetchControllersRef = useRef<AbortController[]>([])
+  const [isBuffering, setIsBuffering] = useState(false)
+  const [isCurrentSentenceVisible, setIsCurrentSentenceVisible] = useState(false)
 
   useTheme(theme)
 
@@ -249,7 +256,24 @@ export default function App() {
     }
   }
 
+  const abortPrefetches = () => {
+    prefetchControllersRef.current.forEach((controller) => controller.abort())
+    prefetchControllersRef.current = []
+  }
+
+  const prefetchUpcomingSentences = (index: number, runId: number) => {
+    abortPrefetches()
+    const upcoming = sentences.slice(index + 1, index + 1 + PREFETCH_AHEAD_SENTENCES)
+    prefetchControllersRef.current = upcoming.map((nextSentence) => {
+      const controller = new AbortController()
+      Effect.runFork(prefetchSpeech(nextSentence.id, nextSentence.text, defaultTtsConfig, { signal: controller.signal }))
+      return controller
+    })
+    if (playbackRunRef.current !== runId) abortPrefetches()
+  }
+
   const changeChapter = (index: number, edge: 'start' | 'end' = 'start') => {
+    abortPrefetches()
     const clamped = Math.max(0, Math.min(book.chapters.length - 1, index))
     const targetChapter = book.chapters[clamped]
     const chapterSentences = targetChapter.paragraphs.flatMap((p) => p.sentences)
@@ -258,6 +282,15 @@ export default function App() {
     setCurrentSentenceId(null)
     setLocationSentenceId(mode === 'paginated' ? anchor ?? null : null)
     if (mode === 'scroll') requestScrollToChapter(clamped)
+  }
+
+  const syncToCurrentSentence = () => {
+    if (!currentSentenceId) return
+    const meta = sentenceMeta.byId.get(currentSentenceId)
+    if (meta) setChapterIndex(meta.chapterIndex)
+    setLocationSentenceId(currentSentenceId)
+    setSyncKey((key) => key + 1)
+    if (mode === 'scroll') requestScrollToSentence(currentSentenceId)
   }
 
   const seekToProgress = (pct: number) => {
@@ -304,10 +337,18 @@ export default function App() {
 
     // Generate/cache narration at the natural 1x voice speed.
     // User speed is applied locally via HTMLAudioElement.playbackRate so we don't regenerate audio per speed.
-    const nextSentence = sentences[index + 1]
-    if (nextSentence) Effect.runFork(prefetchSpeech(nextSentence.id, nextSentence.text, defaultTtsConfig))
+    prefetchUpcomingSentences(index, runId)
 
-    const audio = await Effect.runPromise(getSpeechAudio(sentence.id, sentence.text, defaultTtsConfig))
+    const bufferingTimer = window.setTimeout(() => {
+      if (playbackRunRef.current === runId) setIsBuffering(true)
+    }, BUFFERING_DELAY_MS)
+    let audio: TtsAudio
+    try {
+      audio = await Effect.runPromise(getSpeechAudio(sentence.id, sentence.text, defaultTtsConfig))
+    } finally {
+      window.clearTimeout(bufferingTimer)
+      if (playbackRunRef.current === runId) setIsBuffering(false)
+    }
     if (playbackRunRef.current !== runId) return
 
     audioRef.current?.pause()
@@ -318,18 +359,36 @@ export default function App() {
     const updateActiveWord = () => {
       if (playbackRunRef.current !== runId || element.paused || element.ended) return
       const currentTime = element.currentTime
-      while (wordCursor < audio.words.length - 1 && currentTime > audio.words[wordCursor].end) wordCursor++
+      while (
+        wordCursor < audio.words.length - 1 &&
+        currentTime >= audio.words[wordCursor + 1].start
+      ) {
+        wordCursor++
+      }
       const word = audio.words[wordCursor]
-      if (word && currentTime >= word.start && currentTime <= word.end + 0.04) {
-        const wordIndex = wordCursor
-        const occurrence = audio.words
-          .slice(0, wordIndex + 1)
-          .filter((candidate) => normalizeWord(candidate.text) === normalizeWord(word.text)).length - 1
-        setActiveWord((current) =>
-          current?.sentenceId === sentence.id && current.wordIndex === wordIndex
-            ? current
-            : { sentenceId: sentence.id, wordIndex, occurrence, text: word.text },
-        )
+      if (word) {
+        const nextWord = audio.words[wordCursor + 1]
+        const gapToNext = nextWord ? nextWord.start - word.end : 0
+        const isShortPunctuationPause = currentTime > word.end && gapToNext > 0 && gapToNext <= 0.45 && currentTime < nextWord.start
+        const shouldHighlight =
+          (currentTime >= word.start && currentTime <= word.end + 0.06) ||
+          isShortPunctuationPause
+
+        if (shouldHighlight) {
+          const wordIndex = wordCursor
+          const occurrence = audio.words
+            .slice(0, wordIndex + 1)
+            .filter((candidate) => normalizeWord(candidate.text) === normalizeWord(word.text)).length - 1
+          setActiveWord((current) =>
+            current?.sentenceId === sentence.id &&
+            current.wordIndex === wordIndex &&
+            current.isPunctuationPause === isShortPunctuationPause
+              ? current
+              : { sentenceId: sentence.id, wordIndex, occurrence, text: word.text, isPunctuationPause: isShortPunctuationPause },
+          )
+        } else if (currentTime > word.end + 0.12) {
+          setActiveWord(null)
+        }
       }
       wordFrameRef.current = requestAnimationFrame(updateActiveWord)
     }
@@ -358,6 +417,8 @@ export default function App() {
 
   const stopPlayback = () => {
     playbackRunRef.current++
+    abortPrefetches()
+    setIsBuffering(false)
     if (wordFrameRef.current) cancelAnimationFrame(wordFrameRef.current)
     wordFrameRef.current = 0
     audioRef.current?.pause()
@@ -374,6 +435,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       playbackRunRef.current++
+      abortPrefetches()
       if (wordFrameRef.current) cancelAnimationFrame(wordFrameRef.current)
       audioRef.current?.pause()
     }
@@ -476,6 +538,8 @@ export default function App() {
           onLocationChange={setLocationSentenceId}
           onPaginationChange={setPaginationInfo}
           scrollRequest={scrollRequest}
+          syncKey={syncKey}
+          onCurrentSentenceVisibilityChange={setIsCurrentSentenceVisible}
         />
       </main>
 
@@ -487,6 +551,9 @@ export default function App() {
         }}
         speed={speed}
         onSpeedChange={setSpeed}
+        isBuffering={isBuffering}
+        canSync={!!currentSentenceId && !isCurrentSentenceVisible}
+        onSync={syncToCurrentSentence}
         mode={mode}
         paginationInfo={paginationInfo}
         scrollProgressInfo={scrollProgressInfo}

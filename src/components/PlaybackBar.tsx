@@ -8,6 +8,9 @@ type Props = {
   onTogglePlay: () => void
   speed: number
   onSpeedChange: (speed: number) => void
+  isBuffering: boolean
+  canSync: boolean
+  onSync: () => void
   mode: ReaderMode
   paginationInfo: PaginationInfo | null
   scrollProgressInfo: ScrollProgressInfo | null
@@ -24,6 +27,9 @@ export function PlaybackBar({
   onTogglePlay,
   speed,
   onSpeedChange,
+  isBuffering,
+  canSync,
+  onSync,
   mode,
   paginationInfo,
   scrollProgressInfo,
@@ -48,6 +54,24 @@ export function PlaybackBar({
         </button>
 
         <SpeedButtons speed={speed} onSpeedChange={onSpeedChange} />
+
+        {canSync && (
+          <button
+            type="button"
+            onClick={onSync}
+            className="shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) hover:scale-[1.03] active:scale-[0.97] dark:bg-zinc-100 dark:text-zinc-900"
+            aria-label="Sync to current sentence"
+          >
+            SYNC
+          </button>
+        )}
+
+        {isBuffering && (
+          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-800/70 dark:text-zinc-400" aria-live="polite">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
+            Buffering
+          </div>
+        )}
 
         <ReaderProgress
           mode={mode}

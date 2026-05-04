@@ -66,6 +66,7 @@ export type ActiveWord = {
   wordIndex: number
   occurrence: number
   text: string
+  isPunctuationPause?: boolean
 }
 
 export type CounterMode = 'chapter' | 'book'

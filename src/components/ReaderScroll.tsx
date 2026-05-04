@@ -3,6 +3,7 @@ import type { ActiveWord, Book, ScrollRequest } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
 import { getParagraphText, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
 import { SentenceHighlight } from './SentenceHighlight'
+import { WordHighlight } from './WordHighlight'
 
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 
@@ -38,6 +39,8 @@ type Props = {
   onSentenceSelect: (id: string | null) => void
   onLocationChange: (id: string | null) => void
   scrollRequest: ScrollRequest | null
+  syncKey: number
+  onCurrentSentenceVisibilityChange: (visible: boolean) => void
 }
 
 export function ReaderScroll({
@@ -51,6 +54,7 @@ export function ReaderScroll({
   onSentenceSelect,
   onLocationChange,
   scrollRequest,
+  onCurrentSentenceVisibilityChange,
 }: Props) {
   const articleRef = useRef<HTMLElement | null>(null)
   const activeRef = useRef<HTMLSpanElement | null>(null)
@@ -108,6 +112,30 @@ export function ReaderScroll({
   useEffect(() => {
     handledScrollRequestRef.current = null
   }, [book])
+
+  useEffect(() => {
+    if (!currentSentenceId) {
+      onCurrentSentenceVisibilityChange(false)
+      return
+    }
+
+    const checkVisibility = () => {
+      const spans = Array.from(articleRef.current?.querySelectorAll<HTMLElement>(`[data-sid="${currentSentenceId}"]`) ?? [])
+      const visible = spans.some((span) => {
+        const rect = span.getBoundingClientRect()
+        return rect.bottom > 96 && rect.top < window.innerHeight - 140
+      })
+      onCurrentSentenceVisibilityChange(visible)
+    }
+
+    checkVisibility()
+    window.addEventListener('scroll', checkVisibility, { passive: true })
+    window.addEventListener('resize', checkVisibility)
+    return () => {
+      window.removeEventListener('scroll', checkVisibility)
+      window.removeEventListener('resize', checkVisibility)
+    }
+  }, [currentSentenceId, lines, onCurrentSentenceVisibilityChange])
 
   useEffect(() => {
     if (!linesReady || !scrollRequest) return
@@ -214,8 +242,12 @@ export function ReaderScroll({
           fontSize={fontSize}
           refreshKey={`scroll-${lines.length}-${contentWidth}-${fontSize}-${lineHeight}-${measure}`}
         />
+        <WordHighlight
+          activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
+          articleRef={articleRef}
+        />
 
-        <div>
+        <div className="relative z-10">
           <div style={{ height: virtual.top }} />
           {virtual.lines.map((line, offset) => {
             const li = virtual.start + offset
@@ -279,7 +311,10 @@ function HighlightedText({ part, activeWord }: { part: TextPart; activeWord: Act
   return (
     <>
       {part.text.slice(0, match.start)}
-      <mark className="rounded-sm bg-zinc-900/10 px-0.5 text-inherit transition-colors duration-100 dark:bg-zinc-100/15">
+      <mark
+        data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
+        className="rounded-[0.2em] bg-transparent px-0.5 text-inherit"
+      >
         {part.text.slice(match.start, match.end)}
       </mark>
       {part.text.slice(match.end)}
@@ -295,7 +330,11 @@ function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
   const sentenceMatch = sameWordMatches[activeWord.occurrence]
   if (!sentenceMatch || sentenceMatch.index === undefined) return null
   const start = sentenceMatch.index - part.sentenceOffset
-  const end = start + sentenceMatch[0].length
+  let end = start + sentenceMatch[0].length
+  if (activeWord.isPunctuationPause) {
+    const trailing = part.sentenceText.slice(sentenceMatch.index + sentenceMatch[0].length).match(/^[\s,;:–—-]+/u)
+    end += trailing?.[0]?.length ?? 0
+  }
   if (end <= 0 || start >= part.text.length) return null
   return { start: Math.max(0, start), end: Math.min(part.text.length, end) }
 }

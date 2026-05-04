@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ActiveWord, Book, Chapter, PaginationInfo } from '../types'
 import { measureParagraphLines, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
 import { SentenceHighlight } from './SentenceHighlight'
+import { WordHighlight } from './WordHighlight'
 
 const PARAGRAPH_GAP_LINES = 1
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
@@ -31,6 +32,8 @@ type Props = {
   onSentenceSelect: (id: string | null) => void
   onLocationChange: (id: string | null) => void
   onPaginationChange: (info: PaginationInfo | null) => void
+  syncKey: number
+  onCurrentSentenceVisibilityChange: (visible: boolean) => void
 }
 
 export function ReaderPaginated({
@@ -46,6 +49,8 @@ export function ReaderPaginated({
   onSentenceSelect,
   onLocationChange,
   onPaginationChange,
+  syncKey,
+  onCurrentSentenceVisibilityChange,
 }: Props) {
   const chapter = book.chapters[chapterIndex]
   const containerRef = useRef<HTMLDivElement>(null)
@@ -113,6 +118,10 @@ export function ReaderPaginated({
   const totalBookPages = chapterPageCounts?.reduce((sum, count) => sum + count, 0) ?? 0
 
   useEffect(() => {
+    onCurrentSentenceVisibilityChange(!!currentSentenceId && !!currentPage?.sentenceIds.has(currentSentenceId))
+  }, [currentPage, currentSentenceId, onCurrentSentenceVisibilityChange])
+
+  useEffect(() => {
     if (chapterTotal === 0 || totalBookPages === 0) {
       onPaginationChange(null)
       return
@@ -138,7 +147,7 @@ export function ReaderPaginated({
     if (!anchorId || !layoutInfo || !pageHeight || chapterTotal === 0) return
     const idx = findPageIndexForSentence(chapter, anchorId, layoutInfo, pageHeight, fontSize, lineHeight)
     if (idx >= 0) setPageIndex((prev) => (prev === idx ? prev : idx))
-  }, [chapter, chapterTotal, currentSentenceId, fontSize, lineHeight, locationSentenceId, layoutInfo, pageHeight])
+  }, [chapter, chapterTotal, currentSentenceId, fontSize, lineHeight, locationSentenceId, layoutInfo, pageHeight, syncKey])
 
   useEffect(() => {
     if (chapterTotal > 0 && pageIndex >= chapterTotal) setPageIndex(chapterTotal - 1)
@@ -212,10 +221,14 @@ export function ReaderPaginated({
             fontSize={fontSize}
             refreshKey={`pages-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${fontSize}-${lineHeight}-${measure}`}
           />
+          <WordHighlight
+            activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
+            articleRef={articleRef}
+          />
 
           {currentPage && layoutInfo && (
             <div
-              className="grid h-full"
+              className="relative z-10 grid h-full"
               style={{
                 gridTemplateColumns: `repeat(${layoutInfo.colCount}, minmax(0, 1fr))`,
                 gap: `${COL_GAP_PX}px`,
@@ -278,7 +291,10 @@ function HighlightedText({ part, activeWord }: { part: TextPart; activeWord: Act
   return (
     <>
       {part.text.slice(0, match.start)}
-      <mark className="rounded-sm bg-zinc-900/10 px-0.5 text-inherit transition-colors duration-100 dark:bg-zinc-100/15">
+      <mark
+        data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
+        className="rounded-[0.2em] bg-transparent px-0.5 text-inherit"
+      >
         {part.text.slice(match.start, match.end)}
       </mark>
       {part.text.slice(match.end)}
@@ -294,7 +310,11 @@ function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
   const sentenceMatch = sameWordMatches[activeWord.occurrence]
   if (!sentenceMatch || sentenceMatch.index === undefined) return null
   const start = sentenceMatch.index - part.sentenceOffset
-  const end = start + sentenceMatch[0].length
+  let end = start + sentenceMatch[0].length
+  if (activeWord.isPunctuationPause) {
+    const trailing = part.sentenceText.slice(sentenceMatch.index + sentenceMatch[0].length).match(/^[\s,;:–—-]+/u)
+    end += trailing?.[0]?.length ?? 0
+  }
   if (end <= 0 || start >= part.text.length) return null
   return { start: Math.max(0, start), end: Math.min(part.text.length, end) }
 }

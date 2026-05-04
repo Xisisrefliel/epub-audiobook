@@ -60,13 +60,18 @@ export function makeTtsKey(sentenceId: string, text: string, config: TtsConfig) 
   return [config.model, config.voice, config.format, config.speed, sentenceId, hashText(text)].join(':')
 }
 
-export function getSpeechAudio(sentenceId: string, text: string, config: TtsConfig = defaultTtsConfig) {
+export function getSpeechAudio(
+  sentenceId: string,
+  text: string,
+  config: TtsConfig = defaultTtsConfig,
+  options: { signal?: AbortSignal } = {},
+) {
   const key = makeTtsKey(sentenceId, text, config)
   const cached = audioCache.get(key)
   if (cached?.status === 'ready') return Effect.succeed(cached.audio)
   if (cached?.status === 'pending') return Effect.tryPromise(() => cached.promise)
 
-  const promise = Effect.runPromise(generateSpeech(key, text, config))
+  const promise = Effect.runPromise(generateSpeech(key, text, config, options.signal))
   audioCache.set(key, { status: 'pending', promise })
   return Effect.tryPromise(() => promise).pipe(
     Effect.tap((audio) => Effect.sync(() => audioCache.set(key, { status: 'ready', audio }))),
@@ -74,16 +79,22 @@ export function getSpeechAudio(sentenceId: string, text: string, config: TtsConf
   )
 }
 
-export function prefetchSpeech(sentenceId: string, text: string, config: TtsConfig = defaultTtsConfig) {
-  return getSpeechAudio(sentenceId, text, config).pipe(Effect.asVoid, Effect.ignore)
+export function prefetchSpeech(
+  sentenceId: string,
+  text: string,
+  config: TtsConfig = defaultTtsConfig,
+  options: { signal?: AbortSignal } = {},
+) {
+  return getSpeechAudio(sentenceId, text, config, options).pipe(Effect.asVoid, Effect.ignore)
 }
 
-function generateSpeech(key: string, text: string, config: TtsConfig) {
+function generateSpeech(key: string, text: string, config: TtsConfig, signal?: AbortSignal) {
   return Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: () =>
         fetch('/api/tts', {
           method: 'POST',
+          signal,
           headers: {
             'Content-Type': 'application/json',
           },

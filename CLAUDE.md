@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test runner configured.
 
-The Bun server requires `DEEPINFRA_API_KEY` in `.env` (DeepInfra hosts the Kokoro-82M model). The browser calls `/api/tts`; never expose this key with a `VITE_` prefix.
+The Bun server requires `DEEPINFRA_API_KEY` in `.env` (DeepInfra hosts the Kokoro-82M model). Set `INVITE_CODE` to require invite-code auth; `/api/tts` is protected by an HttpOnly auth cookie. The browser calls `/api/tts`; never expose server secrets with a `VITE_` prefix.
 
 ## Architecture
 

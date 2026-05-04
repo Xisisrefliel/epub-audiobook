@@ -18,6 +18,8 @@ type Props = {
   onLocationChange: (id: string | null) => void
   onPaginationChange: (info: PaginationInfo | null) => void
   scrollRequest: ScrollRequest | null
+  syncKey: number
+  onCurrentSentenceVisibilityChange: (visible: boolean) => void
 }
 
 export const Reader = memo(function Reader({ onPaginationChange, ...props }: Props) {

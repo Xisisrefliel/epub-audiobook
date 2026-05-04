@@ -1,4 +1,5 @@
 const DEEPINFRA_URL = 'https://api.deepinfra.com/v1/inference/hexgrad/Kokoro-82M'
+const AUTH_COOKIE = 'audiobook_auth'
 const distDir = new URL('./dist/', import.meta.url)
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -11,7 +12,70 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   })
 }
 
+function getInviteCode() {
+  return Bun.env.INVITE_CODE?.trim()
+}
+
+function parseCookies(request: Request) {
+  return Object.fromEntries(
+    (request.headers.get('Cookie') ?? '')
+      .split(';')
+      .map((part) => part.trim().split('='))
+      .filter(([key, value]) => key && value)
+      .map(([key, value]) => [key, decodeURIComponent(value)]),
+  )
+}
+
+function isAuthenticated(request: Request) {
+  const inviteCode = getInviteCode()
+  if (!inviteCode) return true
+  return parseCookies(request)[AUTH_COOKIE] === inviteCode
+}
+
+function authCookie(value: string, maxAge: number) {
+  const secure = Bun.env.NODE_ENV === 'production' ? '; Secure' : ''
+  return `${AUTH_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`
+}
+
+async function handleAuth(request: Request, pathname: string) {
+  if (pathname === '/api/auth/status') {
+    return jsonResponse({ authenticated: isAuthenticated(request), required: !!getInviteCode() })
+  }
+
+  if (pathname === '/api/auth/login') {
+    if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, { status: 405 })
+    const inviteCode = getInviteCode()
+    if (!inviteCode) return jsonResponse({ authenticated: true, required: false })
+
+    let body: { code?: string }
+    try {
+      body = await request.json()
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    if (body.code?.trim() !== inviteCode) {
+      return jsonResponse({ error: 'Invalid invite code' }, { status: 401 })
+    }
+
+    return jsonResponse(
+      { authenticated: true },
+      { headers: { 'Set-Cookie': authCookie(inviteCode, 60 * 60 * 24 * 30) } },
+    )
+  }
+
+  if (pathname === '/api/auth/logout') {
+    return jsonResponse({ authenticated: false }, { headers: { 'Set-Cookie': authCookie('', 0) } })
+  }
+
+  return jsonResponse({ error: 'Not found' }, { status: 404 })
+}
+
 async function handleTts(request: Request) {
+  if (!isAuthenticated(request)) {
+    return jsonResponse({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, { status: 405 })
   }
@@ -57,6 +121,7 @@ const server = Bun.serve({
   port: Number(Bun.env.PORT ?? 3000),
   async fetch(request) {
     const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/auth/')) return handleAuth(request, url.pathname)
     if (url.pathname === '/api/tts') return handleTts(request)
     return serveStatic(url.pathname)
   },

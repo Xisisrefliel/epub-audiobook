@@ -676,7 +676,6 @@ export function ReaderPaginated({
                                 suppressNextClickRef.current = false;
                                 return;
                               }
-                              onLocationChange(part.id);
                               onSentenceSelect(part.id);
                             }}
                             onPointerDown={(event) =>
@@ -703,7 +702,6 @@ export function ReaderPaginated({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
-                                onLocationChange(part.id);
                                 onSentenceSelect(part.id);
                               }
                             }}

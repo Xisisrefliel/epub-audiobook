@@ -373,7 +373,6 @@ export function ReaderScroll({
                         suppressNextClickRef.current = false
                         return
                       }
-                      onLocationChange(part.id)
                       onSentenceSelect(part.id)
                     }}
                     onPointerDown={(event) => startBookmarkLongPress(event, part.id, part.sentenceOffset)}
@@ -389,7 +388,6 @@ export function ReaderScroll({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        onLocationChange(part.id)
                         onSentenceSelect(part.id)
                       }
                     }}

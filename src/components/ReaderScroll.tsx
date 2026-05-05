@@ -216,19 +216,20 @@ export function ReaderScroll({
       return el.getBoundingClientRect().top + window.scrollY
     }
 
-    const scrollToLineIndex = (index: number) => {
+    const scrollToLineIndex = (index: number, behavior: ScrollBehavior = 'auto') => {
       const top = articleDocTop() + (lineOffsets[index] ?? index * lineHeightPx) - window.innerHeight / 2
-      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+      window.scrollTo({ top: Math.max(0, top), behavior })
     }
 
     if (scrollRequest.type === 'sentence') {
-      const target = articleRef.current?.querySelector(`[data-sid="${scrollRequest.id}"]`)
+      const behavior = prefersReducedMotion() ? 'auto' : (scrollRequest.behavior ?? 'auto')
+      const target = articleRef.current?.querySelector(`[data-sid="${CSS.escape(scrollRequest.id)}"]`)
       if (target) {
-        target.scrollIntoView({ behavior: 'auto', block: 'center' })
+        target.scrollIntoView({ behavior, block: 'center' })
         return
       }
       const index = sentenceLineIndex.get(scrollRequest.id)
-      if (index !== undefined) scrollToLineIndex(index)
+      if (index !== undefined) scrollToLineIndex(index, behavior)
       return
     }
 
@@ -508,6 +509,10 @@ function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
 
 function normalizeWord(value: string) {
   return value.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 const scrollLinesCache = new WeakMap<Book, Map<string, LineFragment[]>>()

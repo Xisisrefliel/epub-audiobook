@@ -179,8 +179,8 @@ export default function App() {
 
   useTheme(theme)
 
-  const requestScrollToSentence = (id: string) => {
-    setScrollRequest({ key: ++scrollRequestKeyRef.current, type: 'sentence', id })
+  const requestScrollToSentence = (id: string, behavior: ScrollBehavior = 'auto') => {
+    setScrollRequest({ key: ++scrollRequestKeyRef.current, type: 'sentence', id, behavior })
   }
 
   const requestScrollToChapter = (index: number) => {
@@ -473,7 +473,7 @@ export default function App() {
     setCurrentSentenceId(sentence.id)
     setLocationSentenceId(sentence.id)
     setActiveWord(null)
-    if (mode === 'scroll') requestScrollToSentence(sentence.id)
+    if (mode === 'scroll') requestScrollToSentence(sentence.id, 'smooth')
 
     // Generate/cache narration at the natural 1x voice speed.
     // User speed is applied locally via HTMLAudioElement.playbackRate so we don't regenerate audio per speed.

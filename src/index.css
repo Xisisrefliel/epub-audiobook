@@ -22,6 +22,18 @@
   --animate-drawer-panel-out: drawer-panel-out 200ms var(--ease-drawer) both;
 }
 
+@keyframes sentence-press-hold {
+  0% {
+    transform: scale(1);
+  }
+  62% {
+    transform: scale(1.034);
+  }
+  100% {
+    transform: scale(1.022);
+  }
+}
+
 @keyframes library-backdrop-out {
   to { opacity: 0; }
 }
@@ -170,6 +182,28 @@ body {
   .control-button {
     @apply flex shrink-0 items-center justify-center rounded-full text-zinc-700 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) active:scale-[0.94] active:bg-zinc-100 hoverable:hover:bg-zinc-100/80 hoverable:hover:text-zinc-900 dark:text-zinc-200 dark:active:bg-zinc-900 dark:hoverable:hover:bg-zinc-900 dark:hoverable:hover:text-zinc-50;
   }
+}
+
+.sentence-press-feedback {
+  display: inline-block;
+  transform: scale(1);
+  transform-origin: 50% 62%;
+  transition:
+    transform 260ms var(--ease-out-strong),
+    background-color 240ms var(--ease-out-strong);
+}
+
+.sentence-press-feedback.is-pressing {
+  animation: sentence-press-hold 340ms var(--ease-out-strong) both;
+}
+
+.active-bookmark-cue {
+  position: relative;
+  box-shadow: inset 0 -3px 0 rgba(136, 19, 55, 0.4);
+}
+
+html.dark .active-bookmark-cue {
+  box-shadow: inset 0 -3px 0 rgba(251, 113, 133, 0.54);
 }
 
 .range-input {

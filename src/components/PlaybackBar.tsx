@@ -38,7 +38,7 @@ export function PlaybackBar({
   onProgressSeek,
 }: Props) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
+    <div data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
       <div className="surface-floating pointer-events-auto mx-auto grid max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-2 px-2.5 py-2 sm:flex sm:gap-3 sm:px-3">
         <button
           type="button"
@@ -61,7 +61,7 @@ export function PlaybackBar({
           <button
             type="button"
             onClick={onSync}
-            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:order-none dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
+            className="hidden shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:block dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
             aria-label="Sync to current sentence"
           >
             SYNC
@@ -75,14 +75,18 @@ export function PlaybackBar({
           </div>
         )}
 
-        <ReaderProgress
-          mode={mode}
-          paginationInfo={paginationInfo}
-          scrollProgressInfo={scrollProgressInfo}
-          counterMode={counterMode}
-          onToggleCounterMode={onToggleCounterMode}
-          onProgressSeek={onProgressSeek}
-        />
+        <div className="col-span-2 min-w-0 sm:contents">
+          <ReaderProgress
+            mode={mode}
+            paginationInfo={paginationInfo}
+            scrollProgressInfo={scrollProgressInfo}
+            counterMode={counterMode}
+            onToggleCounterMode={onToggleCounterMode}
+            onProgressSeek={onProgressSeek}
+            canSync={canSync}
+            onSync={onSync}
+          />
+        </div>
       </div>
     </div>
   )
@@ -135,6 +139,8 @@ function ReaderProgress({
   counterMode,
   onToggleCounterMode,
   onProgressSeek,
+  canSync,
+  onSync,
 }: {
   mode: ReaderMode
   paginationInfo: PaginationInfo | null
@@ -142,6 +148,8 @@ function ReaderProgress({
   counterMode: CounterMode
   onToggleCounterMode: () => void
   onProgressSeek: (pct: number) => void
+  canSync: boolean
+  onSync: () => void
 }) {
   const effectiveCounterMode = mode === 'scroll' ? 'book' : counterMode
   const progress =
@@ -193,32 +201,43 @@ function ReaderProgress({
       data-dragging={isDragging || undefined}
       className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-black dark:data-[dragging]:bg-black"
     >
-      <button
-        type="button"
-        disabled={!progress.enabled}
-        aria-label="Seek reading position"
-        className="relative flex h-10 min-w-0 flex-1 cursor-pointer touch-none items-center rounded-full outline-none disabled:cursor-default"
-        onPointerDown={(event) => {
-          if (!progress.enabled) return
-          event.currentTarget.setPointerCapture(event.pointerId)
-          const pct = pctFromPointer(event)
-          dragContextRef.current = progressContext
-          latestPctRef.current = pct
-          lastLiveSeekRef.current = performance.now()
-          setDragPct(pct * 100)
-          onProgressSeek(pct)
-        }}
-        onPointerMove={(event) => {
-          if (!progress.enabled || event.buttons !== 1) return
-          previewFromPointer(event, true)
-        }}
-        onPointerUp={(event) => {
-          if (!progress.enabled) return
-          commitSeek(event)
-        }}
-        onPointerCancel={() => setDragPct(null)}
-      >
-        <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:group-hover/progress:bg-black dark:group-data-[dragging]/progress:bg-black">
+      <div className="relative flex min-w-0 flex-1">
+        {canSync && (
+          <button
+            type="button"
+            onClick={onSync}
+            className="absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[72%] rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-zinc-900 shadow-lg shadow-zinc-900/10 transition-[transform,background-color,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-50 sm:hidden dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:shadow-black/40 dark:hoverable:hover:bg-zinc-900"
+            aria-label="Sync to current sentence"
+          >
+            SYNC
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={!progress.enabled}
+          aria-label="Seek reading position"
+          className="relative flex h-10 min-w-0 flex-1 cursor-pointer touch-none items-center rounded-full outline-none disabled:cursor-default"
+          onPointerDown={(event) => {
+            if (!progress.enabled) return
+            event.currentTarget.setPointerCapture(event.pointerId)
+            const pct = pctFromPointer(event)
+            dragContextRef.current = progressContext
+            latestPctRef.current = pct
+            lastLiveSeekRef.current = performance.now()
+            setDragPct(pct * 100)
+            onProgressSeek(pct)
+          }}
+          onPointerMove={(event) => {
+            if (!progress.enabled || event.buttons !== 1) return
+            previewFromPointer(event, true)
+          }}
+          onPointerUp={(event) => {
+            if (!progress.enabled) return
+            commitSeek(event)
+          }}
+          onPointerCancel={() => setDragPct(null)}
+        >
+          <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:group-hover/progress:bg-black dark:group-data-[dragging]/progress:bg-black">
           <span
             className={
               'absolute inset-y-0 left-0 origin-left rounded-full bg-zinc-900 will-change-transform dark:bg-zinc-50 ' +
@@ -243,8 +262,9 @@ function ReaderProgress({
             }
             style={{ left: `${displayProgressPct}%` }}
           />
-        </span>
-      </button>
+          </span>
+        </button>
+      </div>
       <button
         type="button"
         onClick={mode === 'paginated' ? onToggleCounterMode : undefined}

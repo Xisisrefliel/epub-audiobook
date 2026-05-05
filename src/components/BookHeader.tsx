@@ -25,7 +25,7 @@ export function BookHeader({
   const chapterTitle = getChapterDisplayTitle(book, chapterIndex)
 
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-30 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:pt-4">
+    <header data-reader-chrome="top" className="pointer-events-none fixed inset-x-0 top-0 z-30 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:pt-4">
       <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 px-2.5 py-2 sm:gap-4 sm:px-4 sm:py-2.5">
         <button
           type="button"

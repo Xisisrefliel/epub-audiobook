@@ -19,6 +19,7 @@ import {
   walkParagraphLineParts,
   type TextPart,
 } from "../utils/pretextLayout";
+import { BookmarkHighlight } from "./BookmarkHighlight";
 import { SentenceHighlight } from "./SentenceHighlight";
 import { WordHighlight } from "./WordHighlight";
 
@@ -26,10 +27,13 @@ const PARAGRAPH_GAP_LINES = 1;
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif';
 const COL_GAP_PX = 64;
 const MAX_COLS = 2;
-const DESKTOP_VIEWPORT_CHROME_PX = 280;
-const MOBILE_VIEWPORT_CHROME_PX = 340;
 const MOBILE_BREAKPOINT_PX = 640;
+const VIEWPORT_CHROME_GAP_PX = 24;
+const SENTENCE_VERTICAL_PAD_PX = 12;
 const SWIPE_THRESHOLD_PX = 44;
+const LONG_PRESS_BOOKMARK_MS = 520;
+const LONG_PRESS_FEEDBACK_MS = 140;
+const LONG_PRESS_MOVE_THRESHOLD_PX = 10;
 
 type LineFragment = {
   paragraphId: string;
@@ -86,7 +90,11 @@ export function ReaderPaginated({
   const containerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [pageHeight, setPageHeight] = useState(0);
+  const [readableViewport, setReadableViewport] = useState({
+    top: 96,
+    bottom: 220,
+    height: 360,
+  });
   const [isMobile, setIsMobile] = useState(
     () =>
       typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT_PX,
@@ -94,6 +102,17 @@ export function ReaderPaginated({
   const [pageIndex, setPageIndex] = useState(0);
   const [hoveredBookmarkTarget, setHoveredBookmarkTarget] =
     useState<BookmarkTarget | null>(null);
+  const [pressingBookmarkSentenceId, setPressingBookmarkSentenceId] =
+    useState<string | null>(null);
+  const longPressRef = useRef<{
+    timer: number;
+    feedbackTimer: number;
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const suppressNextClickRef = useRef(false);
+  const pageHeight = readableViewport.height;
   const pageFontSize = isMobile ? Math.min(fontSize, 22) : fontSize;
   const pageLineHeight = isMobile ? Math.max(lineHeight, 1.55) : lineHeight;
   const suppressNextAnchorSyncRef = useRef(false);
@@ -116,17 +135,70 @@ export function ReaderPaginated({
     const update = () => {
       const mobile = window.innerWidth < MOBILE_BREAKPOINT_PX;
       setIsMobile(mobile);
-      setPageHeight(
-        Math.max(
-          360,
-          window.innerHeight -
-            (mobile ? MOBILE_VIEWPORT_CHROME_PX : DESKTOP_VIEWPORT_CHROME_PX),
-        ),
-      );
     };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
+  }, []);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+
+    const update = () => {
+      const topBars = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-reader-chrome="top"]'),
+      );
+      const bottomBars = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-reader-chrome="bottom"]'),
+      );
+      const topEdge = Math.max(
+        0,
+        ...topBars.map((el) => el.getBoundingClientRect().bottom),
+      );
+      const bottomEdge = Math.min(
+        window.innerHeight,
+        ...bottomBars.map((el) => el.getBoundingClientRect().top),
+      );
+      const top = Math.ceil(topEdge + VIEWPORT_CHROME_GAP_PX);
+      const bottom = Math.ceil(
+        Math.max(0, window.innerHeight - bottomEdge + VIEWPORT_CHROME_GAP_PX),
+      );
+      const height = Math.max(
+        180,
+        Math.floor(bottomEdge - VIEWPORT_CHROME_GAP_PX - top),
+      );
+
+      setReadableViewport((current) =>
+        current.top === top && current.bottom === bottom && current.height === height
+          ? current
+          : { top, bottom, height },
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        update();
+      });
+    };
+
+    scheduleUpdate();
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("orientationchange", scheduleUpdate);
+
+    const observed = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-reader-chrome]'),
+    );
+    const ro = new ResizeObserver(scheduleUpdate);
+    observed.forEach((el) => ro.observe(el));
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      ro.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("orientationchange", scheduleUpdate);
+    };
   }, []);
 
   const layoutInfo = useMemo(() => {
@@ -264,6 +336,47 @@ export function ReaderPaginated({
 
   const touchStartXRef = useRef<number | null>(null);
 
+  const cancelLongPress = () => {
+    if (!longPressRef.current) return;
+    window.clearTimeout(longPressRef.current.timer);
+    window.clearTimeout(longPressRef.current.feedbackTimer);
+    longPressRef.current = null;
+    setPressingBookmarkSentenceId(null);
+  };
+
+  const startBookmarkLongPress = (
+    event: PointerEvent<HTMLSpanElement>,
+    sentenceId: string,
+    offset: number,
+  ) => {
+    if (event.pointerType === "mouse") return;
+    cancelLongPress();
+    const pointerId = event.pointerId;
+    longPressRef.current = {
+      feedbackTimer: window.setTimeout(() => {
+        setPressingBookmarkSentenceId(sentenceId);
+      }, LONG_PRESS_FEEDBACK_MS),
+      timer: window.setTimeout(() => {
+        suppressNextClickRef.current = true;
+        onBookmarkToggle(sentenceId, offset);
+        setPressingBookmarkSentenceId(null);
+        longPressRef.current = null;
+      }, LONG_PRESS_BOOKMARK_MS),
+      pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const moveBookmarkLongPress = (event: PointerEvent<HTMLSpanElement>) => {
+    const press = longPressRef.current;
+    if (!press || press.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - press.x, event.clientY - press.y);
+    if (distance > LONG_PRESS_MOVE_THRESHOLD_PX) cancelLongPress();
+  };
+
+  useEffect(() => cancelLongPress, []);
+
   const goToPage = (nextIndex: number) => {
     const clamped = Math.max(0, Math.min(nextIndex, chapterTotal - 1));
     const page =
@@ -279,7 +392,6 @@ export function ReaderPaginated({
         : undefined;
     suppressNextAnchorSyncRef.current = true;
     setPageIndex(clamped);
-    onSentenceSelect(null);
     onLocationChange(page?.firstSentenceId ?? null);
   };
 
@@ -342,7 +454,14 @@ export function ReaderPaginated({
   };
 
   return (
-    <div ref={containerRef} className="px-4 pb-48 pt-20 sm:px-8 sm:pb-28">
+    <div
+      ref={containerRef}
+      className="px-4 sm:px-8"
+      style={{
+        paddingTop: readableViewport.top,
+        paddingBottom: readableViewport.bottom,
+      }}
+    >
       <div
         className="mx-auto"
         style={{ width: layoutInfo?.articleWidth ?? "auto", maxWidth: "100%" }}
@@ -354,7 +473,7 @@ export function ReaderPaginated({
           onPointerCancel={() => {
             touchStartXRef.current = null;
           }}
-          className="relative isolate px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
+          className="relative isolate overflow-hidden px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
           style={{
             fontSize: `${pageFontSize}px`,
             lineHeight: pageLineHeight,
@@ -362,6 +481,13 @@ export function ReaderPaginated({
             fontFamily: SERIF_STACK,
           }}
         >
+          <BookmarkHighlight
+            bookmarkIds={[...bookmarkBySentenceId.keys()]}
+            pressingId={pressingBookmarkSentenceId}
+            articleRef={articleRef}
+            fontSize={pageFontSize}
+            refreshKey={`bookmarks-pages-${book.id}-${chapterIndex}-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${pageFontSize}-${pageLineHeight}-${measure}-${bookmarkBySentenceId.size}-${pressingBookmarkSentenceId ?? ""}`}
+          />
           <SentenceHighlight
             activeId={currentSentenceId}
             articleRef={articleRef}
@@ -445,6 +571,9 @@ export function ReaderPaginated({
                       )}
                       {line.parts.map((part, pi) => {
                         const isActive = part.id === currentSentenceId;
+                        const isBookmarked = bookmarkBySentenceId.has(part.id);
+                        const isPressingBookmark =
+                          pressingBookmarkSentenceId === part.id;
                         return (
                           <span
                             key={`${part.id}-${pi}`}
@@ -452,8 +581,26 @@ export function ReaderPaginated({
                             role="button"
                             tabIndex={0}
                             onClick={() => {
+                              if (suppressNextClickRef.current) {
+                                suppressNextClickRef.current = false;
+                                return;
+                              }
                               onLocationChange(part.id);
                               onSentenceSelect(part.id);
+                            }}
+                            onPointerDown={(event) =>
+                              startBookmarkLongPress(
+                                event,
+                                part.id,
+                                part.sentenceOffset,
+                              )
+                            }
+                            onPointerMove={moveBookmarkLongPress}
+                            onPointerUp={cancelLongPress}
+                            onPointerCancel={cancelLongPress}
+                            onContextMenu={(event) => {
+                              if (suppressNextClickRef.current)
+                                event.preventDefault();
                             }}
                             onMouseEnter={() => {
                               setHoveredBookmarkTarget({
@@ -470,17 +617,33 @@ export function ReaderPaginated({
                               }
                             }}
                             className={
-                              "cursor-pointer rounded-sm py-1.5 box-decoration-clone transition-colors duration-200 ease-(--ease-out-strong) " +
+                              "inline-block cursor-pointer select-none rounded-sm py-1.5 box-decoration-clone transition-[background-color,color] duration-300 ease-(--ease-out-strong) hoverable:select-text " +
+                              (isBookmarked && !isActive
+                                ? "text-rose-950 dark:text-rose-100 "
+                                : "") +
+                              (isPressingBookmark
+                                ? "text-rose-950 duration-300 dark:text-rose-50 "
+                                : "") +
                               (isActive
                                 ? "text-zinc-900 dark:text-zinc-50"
                                 : "hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50")
                             }
                           >
                             {pi > 0 ? " " : null}
-                            <HighlightedText
-                              part={part}
-                              activeWord={activeWord}
-                            />
+                            <span
+                              className={
+                                "sentence-press-feedback rounded-sm box-decoration-clone " +
+                                (isActive && isBookmarked
+                                  ? "active-bookmark-cue "
+                                  : "") +
+                                (isPressingBookmark ? "is-pressing" : "")
+                              }
+                            >
+                              <HighlightedText
+                                part={part}
+                                activeWord={activeWord}
+                              />
+                            </span>
                           </span>
                         );
                       })}
@@ -599,6 +762,10 @@ function normalizeWord(value: string) {
 const paginationCache = new WeakMap<Chapter, Map<string, Page>>();
 const pageCountCache = new WeakMap<Chapter, Map<string, number>>();
 
+function getRenderedLineHeight(fontSize: number, lineHeight: number) {
+  return fontSize * lineHeight + SENTENCE_VERTICAL_PAD_PX;
+}
+
 function getCachedChapterPageCount(
   chapter: Chapter,
   layoutInfo: { colCount: number; columnWidth: number },
@@ -662,8 +829,8 @@ function countChapterPages(
 ) {
   const { colCount, columnWidth } = layoutInfo;
   const font = `${fontSize}px ${SERIF_STACK}`;
-  const lineHeightPx = fontSize * lineHeight;
-  const maxLines = Math.max(1, Math.floor(pageHeight / lineHeightPx));
+  const renderedLineHeight = getRenderedLineHeight(fontSize, lineHeight);
+  const paragraphGapHeight = fontSize * lineHeight * PARAGRAPH_GAP_LINES;
   let pageCount = 0;
   let colIdx = 0;
   let colUsed = 0;
@@ -680,9 +847,10 @@ function countChapterPages(
     const lineCount = measureParagraphLines(para, font, columnWidth);
     for (let i = 0; i < lineCount; i++) {
       const startsParagraph = i === 0;
-      const gap = colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0;
-      if (colUsed + gap + 1 > maxLines) advanceColumn();
-      colUsed += (colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0) + 1;
+      const gap = colUsed > 0 && startsParagraph ? paragraphGapHeight : 0;
+      const nextHeight = gap + renderedLineHeight;
+      if (colUsed > 0 && colUsed + nextHeight > pageHeight) advanceColumn();
+      colUsed += (colUsed > 0 && startsParagraph ? paragraphGapHeight : 0) + renderedLineHeight;
     }
   }
 
@@ -700,8 +868,8 @@ function paginateChapterPage(
 ): Page {
   const { colCount, columnWidth } = layoutInfo;
   const font = `${fontSize}px ${SERIF_STACK}`;
-  const lineHeightPx = fontSize * lineHeight;
-  const maxLines = Math.max(1, Math.floor(pageHeight / lineHeightPx));
+  const renderedLineHeight = getRenderedLineHeight(fontSize, lineHeight);
+  const paragraphGapHeight = fontSize * lineHeight * PARAGRAPH_GAP_LINES;
   const newPage = (): Page => ({
     columns: Array.from({ length: colCount }, () => ({ lines: [] })),
     sentenceIds: new Set(),
@@ -730,8 +898,9 @@ function paginateChapterPage(
       columnWidth,
       ({ parts, lineIndex, endsParagraph }) => {
         const startsParagraph = lineIndex === 0;
-        const gap = colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0;
-        if (colUsed + gap + 1 > maxLines) advanceColumn();
+        const gap = colUsed > 0 && startsParagraph ? paragraphGapHeight : 0;
+        const nextHeight = gap + renderedLineHeight;
+        if (colUsed > 0 && colUsed + nextHeight > pageHeight) advanceColumn();
         if (pageIndex > targetPageIndex) {
           done = true;
           return false;
@@ -750,7 +919,8 @@ function paginateChapterPage(
           });
         }
         colUsed +=
-          (colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0) + 1;
+          (colUsed > 0 && startsParagraph ? paragraphGapHeight : 0) +
+          renderedLineHeight;
       },
     );
     if (done) break;
@@ -769,10 +939,8 @@ function findPageIndexForSentence(
 ) {
   const { colCount, columnWidth } = layoutInfo;
   const font = `${fontSize}px ${SERIF_STACK}`;
-  const maxLines = Math.max(
-    1,
-    Math.floor(pageHeight / (fontSize * lineHeight)),
-  );
+  const renderedLineHeight = getRenderedLineHeight(fontSize, lineHeight);
+  const paragraphGapHeight = fontSize * lineHeight * PARAGRAPH_GAP_LINES;
   let pageIndex = 0;
   let colIdx = 0;
   let colUsed = 0;
@@ -791,13 +959,16 @@ function findPageIndexForSentence(
     walkParagraphLineParts(para, font, columnWidth, ({ parts, lineIndex }) => {
       if (found >= 0) return false;
       const startsParagraph = lineIndex === 0;
-      const gap = colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0;
-      if (colUsed + gap + 1 > maxLines) advanceColumn();
+      const gap = colUsed > 0 && startsParagraph ? paragraphGapHeight : 0;
+      const nextHeight = gap + renderedLineHeight;
+      if (colUsed > 0 && colUsed + nextHeight > pageHeight) advanceColumn();
       if (parts.some((part) => part.id === sentenceId)) {
         found = pageIndex;
         return false;
       }
-      colUsed += (colUsed > 0 && startsParagraph ? PARAGRAPH_GAP_LINES : 0) + 1;
+      colUsed +=
+        (colUsed > 0 && startsParagraph ? paragraphGapHeight : 0) +
+        renderedLineHeight;
     });
   }
   return found;
@@ -815,7 +986,7 @@ function PageNav({
   chapterTotal: number;
 }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[8rem] z-20 px-2 sm:bottom-24 sm:px-4">
+    <div data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-[8rem] z-20 px-2 sm:bottom-24 sm:px-4">
       <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 px-2.5 py-2 sm:gap-3 sm:px-3">
         <button
           type="button"

@@ -145,16 +145,9 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
   }, [open, isMobile, desktopMounted])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Lock background scroll and listen for Escape while overlay is visible (incl. desktop exit)
+  // Listen for Escape while overlay is visible (incl. desktop exit).
   useEffect(() => {
     if (!overlayVisible) return
-    const body = document.body
-    const html = document.documentElement
-    const prevBody = body.style.overflow
-    const prevHtml = html.style.overflow
-    body.style.overflow = 'hidden'
-    html.style.overflow = 'hidden'
-
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -164,8 +157,6 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
     window.addEventListener('keydown', onKey)
 
     return () => {
-      body.style.overflow = prevBody
-      html.style.overflow = prevHtml
       window.removeEventListener('keydown', onKey)
     }
   }, [overlayVisible, onClose])

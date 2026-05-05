@@ -144,7 +144,7 @@ export function ReaderScroll({
     sentenceId: string,
     offset: number,
   ) => {
-    if (event.pointerType === 'mouse') return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
     cancelLongPress()
     const pointerId = event.pointerId
     longPressRef.current = {

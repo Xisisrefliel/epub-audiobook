@@ -34,6 +34,8 @@ const SWIPE_THRESHOLD_PX = 44;
 const LONG_PRESS_BOOKMARK_MS = 520;
 const LONG_PRESS_FEEDBACK_MS = 140;
 const LONG_PRESS_MOVE_THRESHOLD_PX = 10;
+const SWIPE_VELOCITY_THRESHOLD_PX_MS = 0.45;
+const SWIPE_VELOCITY_MIN_DISTANCE_PX = 24;
 
 type LineFragment = {
   paragraphId: string;
@@ -408,7 +410,11 @@ export function ReaderPaginated({
       pageFontSize,
       pageLineHeight,
     );
-    if (idx >= 0) setPageIndex((prev) => (prev === idx ? prev : idx));
+    if (idx < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      setPageIndex((prev) => (prev === idx ? prev : idx));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [
     chapter,
     chapterTotal,
@@ -422,11 +428,14 @@ export function ReaderPaginated({
   ]);
 
   useEffect(() => {
-    if (chapterTotal > 0 && pageIndex >= chapterTotal)
+    if (chapterTotal <= 0 || pageIndex < chapterTotal) return;
+    const frame = window.requestAnimationFrame(() => {
       setPageIndex(chapterTotal - 1);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [chapterTotal, pageIndex]);
 
-  const touchStartXRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; time: number } | null>(null);
 
   const cancelLongPress = () => {
     if (!longPressRef.current) return;
@@ -479,6 +488,7 @@ export function ReaderPaginated({
 
   const goToPage = (nextIndex: number) => {
     const clamped = Math.max(0, Math.min(nextIndex, chapterTotal - 1));
+    if (clamped === pageIndex) return;
     const page =
       layoutInfo && pageHeight
         ? getCachedChapterPage(
@@ -541,17 +551,169 @@ export function ReaderPaginated({
 
   const onPagePointerDown = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType === "mouse") return;
-    touchStartXRef.current = event.clientX;
+    touchStartRef.current = { x: event.clientX, time: performance.now() };
   };
 
   const onPagePointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (touchStartXRef.current === null) return;
-    const delta = event.clientX - touchStartXRef.current;
-    touchStartXRef.current = null;
-    if (Math.abs(delta) < SWIPE_THRESHOLD_PX) return;
+    if (!touchStartRef.current) return;
+    const delta = event.clientX - touchStartRef.current.x;
+    const elapsed = Math.max(1, performance.now() - touchStartRef.current.time);
+    const velocity = Math.abs(delta) / elapsed;
+    touchStartRef.current = null;
+    const isCommittedSwipe =
+      Math.abs(delta) >= SWIPE_THRESHOLD_PX ||
+      (Math.abs(delta) >= SWIPE_VELOCITY_MIN_DISTANCE_PX &&
+        velocity >= SWIPE_VELOCITY_THRESHOLD_PX_MS);
+    if (!isCommittedSwipe) return;
     if (delta < 0) goNext();
     else goPrev();
   };
+
+  const renderPage = (
+    page: Page,
+    className: string,
+    pageKey?: string,
+  ) =>
+    layoutInfo ? (
+      <div
+        key={pageKey}
+        className={className}
+        style={{
+          gridTemplateColumns: `repeat(${layoutInfo.colCount}, minmax(0, 1fr))`,
+          gap: `${COL_GAP_PX}px`,
+        }}
+      >
+        {page.columns.map((col, ci) => (
+          <div key={ci} className="min-w-0">
+            {col.lines.map((line, li) => {
+              const lineKey = `${ci}-${line.paragraphId}-${li}`;
+              const anchoredPart = line.parts.find((part) => {
+                const bookmark = bookmarkBySentenceId.get(part.id);
+                return bookmark ? partContainsOffset(part, bookmark.offset) : false;
+              });
+              const anchoredBookmark = anchoredPart
+                ? bookmarkBySentenceId.get(anchoredPart.id)
+                : undefined;
+              const target =
+                anchoredPart && anchoredBookmark
+                  ? {
+                      sentenceId: anchoredPart.id,
+                      offset: anchoredBookmark.offset,
+                      isBookmarked: true,
+                    }
+                  : hoveredBookmarkTarget?.lineKey === lineKey
+                    ? {
+                        sentenceId: hoveredBookmarkTarget.sentenceId,
+                        offset: hoveredBookmarkTarget.offset,
+                        isBookmarked: false,
+                      }
+                    : line.parts[0]
+                      ? {
+                          sentenceId: line.parts[0].id,
+                          offset: line.parts[0].sentenceOffset,
+                          isBookmarked: false,
+                        }
+                      : null;
+
+              return (
+                <div
+                  key={lineKey}
+                  className={
+                    "group/line relative " +
+                    (line.endsParagraph
+                      ? "whitespace-nowrap"
+                      : "whitespace-nowrap text-justify [text-align-last:justify]")
+                  }
+                  style={{
+                    marginTop:
+                      li > 0 && line.startsParagraph
+                        ? `${pageFontSize * pageLineHeight * PARAGRAPH_GAP_LINES}px`
+                        : undefined,
+                  }}
+                >
+                  {target && (
+                    <BookmarkButton
+                      isBookmarked={target.isBookmarked}
+                      sentenceId={target.sentenceId}
+                      offset={target.offset}
+                      onToggle={onBookmarkToggle}
+                    />
+                  )}
+                  {line.parts.map((part, pi) => {
+                    const isActive = part.id === currentSentenceId;
+                    const isBookmarked = bookmarkBySentenceId.has(part.id);
+                    return (
+                      <span
+                        key={`${part.id}-${pi}`}
+                        data-sid={part.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          if (suppressNextClickRef.current) {
+                            suppressNextClickRef.current = false;
+                            return;
+                          }
+                          onSentenceSelect(part.id);
+                        }}
+                        onPointerDown={
+                          (event) =>
+                            // eslint-disable-next-line react-hooks/refs -- Event handler reads refs only when a press starts.
+                            startBookmarkLongPress(
+                              event,
+                              part.id,
+                              part.sentenceOffset,
+                            )
+                        }
+                        onPointerMove={moveBookmarkLongPress}
+                        onPointerUp={cancelLongPress}
+                        onPointerCancel={cancelLongPress}
+                        onContextMenu={(event) => {
+                          if (suppressNextClickRef.current) event.preventDefault();
+                        }}
+                        onMouseEnter={() => {
+                          setHoveredBookmarkTarget({
+                            lineKey,
+                            sentenceId: part.id,
+                            offset: part.sentenceOffset,
+                          });
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSentenceSelect(part.id);
+                          }
+                        }}
+                        className={
+                          "inline-block cursor-pointer select-none rounded-sm py-1.5 box-decoration-clone transition-[background-color,color] duration-300 ease-(--ease-out-strong) hoverable:select-text " +
+                          (isBookmarked && !isActive
+                            ? "text-rose-950 dark:text-rose-100 "
+                            : "") +
+                          (isActive
+                            ? "text-zinc-900 dark:text-zinc-50"
+                            : "hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50")
+                        }
+                      >
+                        {pi > 0 ? " " : null}
+                        <span
+                          className={
+                            "sentence-press-feedback rounded-sm box-decoration-clone " +
+                            (pi === 0 ? "sentence-line-start " : "") +
+                            (isBookmarked ? "bookmark-text-highlight " : "") +
+                            (isActive && isBookmarked ? "active-bookmark-cue" : "")
+                          }
+                        >
+                          <HighlightedText part={part} activeWord={activeWord} />
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div
@@ -571,7 +733,7 @@ export function ReaderPaginated({
           onPointerDown={onPagePointerDown}
           onPointerUp={onPagePointerUp}
           onPointerCancel={() => {
-            touchStartXRef.current = null;
+            touchStartRef.current = null;
           }}
           className="relative isolate overflow-visible px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
           style={{
@@ -596,151 +758,12 @@ export function ReaderPaginated({
             articleRef={articleRef}
           />
 
-          {currentPage && layoutInfo && (
-            <div
-              className="relative z-10 grid h-full"
-              style={{
-                gridTemplateColumns: `repeat(${layoutInfo.colCount}, minmax(0, 1fr))`,
-                gap: `${COL_GAP_PX}px`,
-              }}
-            >
-              {currentPage.columns.map((col, ci) => (
-                <div key={ci} className="min-w-0">
-                  {col.lines.map((line, li) => {
-                    const lineKey = `${ci}-${line.paragraphId}-${li}`;
-                    const anchoredPart = line.parts.find((part) => {
-                      const bookmark = bookmarkBySentenceId.get(part.id);
-                      return bookmark
-                        ? partContainsOffset(part, bookmark.offset)
-                        : false;
-                    });
-                    const anchoredBookmark = anchoredPart
-                      ? bookmarkBySentenceId.get(anchoredPart.id)
-                      : undefined;
-                    const target =
-                      anchoredPart && anchoredBookmark
-                        ? {
-                            sentenceId: anchoredPart.id,
-                            offset: anchoredBookmark.offset,
-                            isBookmarked: true,
-                          }
-                        : hoveredBookmarkTarget?.lineKey === lineKey
-                          ? {
-                              sentenceId: hoveredBookmarkTarget.sentenceId,
-                              offset: hoveredBookmarkTarget.offset,
-                              isBookmarked: false,
-                            }
-                          : line.parts[0]
-                            ? {
-                                sentenceId: line.parts[0].id,
-                                offset: line.parts[0].sentenceOffset,
-                                isBookmarked: false,
-                              }
-                            : null;
-
-                    return (
-                      <div
-                        key={lineKey}
-                        className={
-                          "group/line relative " +
-                          (line.endsParagraph
-                            ? "whitespace-nowrap"
-                            : "whitespace-nowrap text-justify [text-align-last:justify]")
-                        }
-                        style={{
-                          marginTop:
-                            li > 0 && line.startsParagraph
-                              ? `${pageFontSize * pageLineHeight * PARAGRAPH_GAP_LINES}px`
-                              : undefined,
-                        }}
-                      >
-                      {target && (
-                        <BookmarkButton
-                          isBookmarked={target.isBookmarked}
-                          sentenceId={target.sentenceId}
-                          offset={target.offset}
-                          onToggle={onBookmarkToggle}
-                        />
-                      )}
-                      {line.parts.map((part, pi) => {
-                        const isActive = part.id === currentSentenceId;
-                        const isBookmarked = bookmarkBySentenceId.has(part.id);
-                        return (
-                          <span
-                            key={`${part.id}-${pi}`}
-                            data-sid={part.id}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => {
-                              if (suppressNextClickRef.current) {
-                                suppressNextClickRef.current = false;
-                                return;
-                              }
-                              onSentenceSelect(part.id);
-                            }}
-                            onPointerDown={(event) =>
-                              startBookmarkLongPress(
-                                event,
-                                part.id,
-                                part.sentenceOffset,
-                              )
-                            }
-                            onPointerMove={moveBookmarkLongPress}
-                            onPointerUp={cancelLongPress}
-                            onPointerCancel={cancelLongPress}
-                            onContextMenu={(event) => {
-                              if (suppressNextClickRef.current)
-                                event.preventDefault();
-                            }}
-                            onMouseEnter={() => {
-                              setHoveredBookmarkTarget({
-                                lineKey,
-                                sentenceId: part.id,
-                                offset: part.sentenceOffset,
-                              });
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                onSentenceSelect(part.id);
-                              }
-                            }}
-                            className={
-                              "inline-block cursor-pointer select-none rounded-sm py-1.5 box-decoration-clone transition-[background-color,color] duration-300 ease-(--ease-out-strong) hoverable:select-text " +
-                              (isBookmarked && !isActive
-                                ? "text-rose-950 dark:text-rose-100 "
-                                : "") +
-                              (isActive
-                                ? "text-zinc-900 dark:text-zinc-50"
-                                : "hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50")
-                            }
-                          >
-                            {pi > 0 ? " " : null}
-                            <span
-                              className={
-                                "sentence-press-feedback rounded-sm box-decoration-clone " +
-                                (pi === 0 ? "sentence-line-start " : "") +
-                                (isBookmarked ? "bookmark-text-highlight " : "") +
-                                (isActive && isBookmarked
-                                  ? "active-bookmark-cue"
-                                  : "")
-                              }
-                            >
-                              <HighlightedText
-                                part={part}
-                                activeWord={activeWord}
-                              />
-                            </span>
-                          </span>
-                        );
-                      })}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
+          {currentPage &&
+            renderPage(
+              currentPage,
+              "page-content-in relative z-10 grid h-full",
+              `${chapterIndex}-${pageIndex}`,
+            )}
         </article>
 
         <PageNav

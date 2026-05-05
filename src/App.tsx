@@ -42,6 +42,15 @@ type StoredSettings = {
   speed?: number
 }
 
+type NavigationHistoryEntry = {
+  sentenceId: string
+}
+
+type NavigationHistory = {
+  entries: NavigationHistoryEntry[]
+  index: number
+}
+
 function readJson<T>(key: string): T | null {
   try {
     const raw = window.localStorage.getItem(key)
@@ -207,6 +216,7 @@ export default function App() {
   }, [sentences])
   const [currentSentenceId, setCurrentSentenceId] = useState<string | null>(initialProgress.currentSentenceId ?? null)
   const [locationSentenceId, setLocationSentenceId] = useState<string | null>(initialProgress.locationSentenceId ?? null)
+  const [navigationHistory, setNavigationHistory] = useState<NavigationHistory>({ entries: [], index: -1 })
   const [activeWord, setActiveWord] = useState<ActiveWord | null>(null)
   const [bookmarksByBook, setBookmarksByBook] = useState<BookmarkMap>(storedBookmarksByBook)
   const bookmarkBySentenceId = useMemo(() => {
@@ -292,7 +302,23 @@ export default function App() {
     }
   }, [activeBookId])
 
-  const selectSentence = (id: string | null) => {
+  const recordNavigationTarget = (targetId: string) => {
+    const originId = locationSentenceId ?? currentSentenceId
+    if (!originId || originId === targetId) return
+    if (!sentenceMeta.byId.has(originId) || !sentenceMeta.byId.has(targetId)) return
+
+    setNavigationHistory((history) => {
+      const entries = history.entries
+      const baseEntries = history.index >= 0 ? entries.slice(0, history.index + 1) : [{ sentenceId: originId }]
+      const last = baseEntries.at(-1)
+      const nextEntries = last?.sentenceId === targetId ? baseEntries : [...baseEntries, { sentenceId: targetId }]
+
+      return { entries: nextEntries, index: nextEntries.length - 1 }
+    })
+  }
+
+  const selectSentence = (id: string | null, options: { recordHistory?: boolean } = {}) => {
+    if (id && options.recordHistory) recordNavigationTarget(id)
     setCurrentSentenceId(id)
     if (!id) return
     setLocationSentenceId(id)
@@ -318,7 +344,7 @@ export default function App() {
   const selectBookmark = (id: string) => {
     const meta = sentenceMeta.byId.get(id)
     if (meta) setChapterIndex(meta.chapterIndex)
-    selectSentence(id)
+    selectSentence(id, { recordHistory: true })
   }
 
   const updateBookmarkPages = useCallback((pages: Record<string, BookmarkPageInfo>) => {
@@ -366,16 +392,36 @@ export default function App() {
     if (playbackRunRef.current !== runId) abortPrefetches()
   }
 
-  const changeChapter = (index: number, edge: 'start' | 'end' = 'start') => {
+  const changeChapter = (index: number, edge: 'start' | 'end' = 'start', options: { recordHistory?: boolean } = {}) => {
     abortPrefetches()
     const clamped = Math.max(0, Math.min(book.chapters.length - 1, index))
     const targetChapter = book.chapters[clamped]
     const chapterSentences = targetChapter.paragraphs.flatMap((p) => p.sentences)
     const anchor = edge === 'end' ? chapterSentences.at(-1)?.id : chapterSentences[0]?.id
+    if (anchor && options.recordHistory !== false) recordNavigationTarget(anchor)
     setChapterIndex(clamped)
     setCurrentSentenceId(null)
     setLocationSentenceId(mode === 'paginated' ? anchor ?? null : null)
     if (mode === 'scroll') requestScrollToChapter(clamped)
+  }
+
+  const goBackInNavigationHistory = () => {
+    const previousIndex = navigationHistory.index - 1
+    const previous = navigationHistory.entries[previousIndex]
+    if (!previous) return
+    const meta = sentenceMeta.byId.get(previous.sentenceId)
+    if (!meta) {
+      setNavigationHistory((history) => ({
+        entries: history.entries.filter((_, index) => index !== previousIndex),
+        index: Math.min(previousIndex, history.entries.length - 2),
+      }))
+      return
+    }
+    setNavigationHistory((history) => ({ ...history, index: previousIndex }))
+    setChapterIndex(meta.chapterIndex)
+    setCurrentSentenceId(previous.sentenceId)
+    setLocationSentenceId(previous.sentenceId)
+    if (mode === 'scroll') requestScrollToSentence(previous.sentenceId)
   }
 
   const syncToCurrentSentence = () => {
@@ -550,6 +596,7 @@ export default function App() {
       setLibraryOpen(false)
       setChapterIndex(0)
       setCurrentSentenceId(null)
+      setNavigationHistory({ entries: [], index: -1 })
       setLocationSentenceId(nextBook.chapters[0].paragraphs[0]?.sentences[0]?.id ?? null)
     } catch (error) {
       console.error(error)
@@ -567,6 +614,7 @@ export default function App() {
     stopPlayback()
     setActiveBookId(nextBook.id)
     setBook(nextBook)
+    setNavigationHistory({ entries: [], index: -1 })
 
     const progress = readProgressByBook()[nextBook.id]
     const nextChapterIndex = Math.max(0, Math.min(nextBook.chapters.length - 1, progress?.chapterIndex ?? 0))
@@ -655,7 +703,7 @@ export default function App() {
           locationSentenceId={locationSentenceId}
           activeWord={activeWord}
           bookmarkBySentenceId={bookmarkBySentenceId}
-          onSentenceSelect={selectSentence}
+          onSentenceSelect={(id) => selectSentence(id, { recordHistory: true })}
           onBookmarkToggle={toggleBookmark}
           onLocationChange={setLocationSentenceId}
           onPaginationChange={setPaginationInfo}
@@ -675,6 +723,8 @@ export default function App() {
         speed={speed}
         onSpeedChange={setSpeed}
         isBuffering={isBuffering}
+        canGoBack={navigationHistory.index > 0}
+        onGoBack={goBackInNavigationHistory}
         canSync={!!currentSentenceId && !isCurrentSentenceVisible}
         onSync={syncToCurrentSentence}
         mode={mode}
@@ -699,7 +749,7 @@ export default function App() {
         currentChapterIndex={chapterIndex}
         open={tocOpen}
         onClose={() => setTocOpen(false)}
-        onSelectChapter={changeChapter}
+        onSelectChapter={(index) => changeChapter(index, 'start', { recordHistory: true })}
       />
 
       <BookmarksMenu

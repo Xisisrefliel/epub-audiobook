@@ -1,6 +1,6 @@
 import type { PointerEvent } from 'react'
 import { useRef, useState } from 'react'
-import { Pause, Play } from 'lucide-react'
+import { CornerUpLeft, Pause, Play } from 'lucide-react'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
 type Props = {
@@ -9,6 +9,8 @@ type Props = {
   speed: number
   onSpeedChange: (speed: number) => void
   isBuffering: boolean
+  canGoBack: boolean
+  onGoBack: () => void
   canSync: boolean
   onSync: () => void
   mode: ReaderMode
@@ -28,6 +30,8 @@ export function PlaybackBar({
   speed,
   onSpeedChange,
   isBuffering,
+  canGoBack,
+  onGoBack,
   canSync,
   onSync,
   mode,
@@ -51,6 +55,17 @@ export function PlaybackBar({
           ) : (
             <Play className="h-[18px] w-[18px] translate-x-[1px]" fill="currentColor" strokeWidth={0} />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onGoBack}
+          disabled={!canGoBack}
+          className="control-button h-10 w-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
+          aria-label="Go back to previous reading location"
+          title="Go back"
+        >
+          <CornerUpLeft className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
 
         <div className="order-3 col-span-3 sm:order-none sm:col-span-1">
@@ -156,13 +171,13 @@ function ReaderProgress({
     mode === 'paginated'
       ? getPageProgress(paginationInfo, effectiveCounterMode)
       : getScrollProgress(scrollProgressInfo)
-  const [dragPct, setDragPct] = useState<number | null>(null)
   const progressContext = `${mode}-${effectiveCounterMode}`
-  const dragContextRef = useRef(progressContext)
+  const [dragPct, setDragPct] = useState<number | null>(null)
+  const [dragContext, setDragContext] = useState(progressContext)
   const frameRef = useRef(0)
   const latestPctRef = useRef(0)
   const lastLiveSeekRef = useRef(0)
-  const isDragging = dragPct !== null && dragContextRef.current === progressContext
+  const isDragging = dragPct !== null && dragContext === progressContext
   const displayPct = dragPct ?? progress.pct
   const displayProgressPct = isDragging ? displayPct : progress.pct
 
@@ -221,7 +236,7 @@ function ReaderProgress({
             if (!progress.enabled) return
             event.currentTarget.setPointerCapture(event.pointerId)
             const pct = pctFromPointer(event)
-            dragContextRef.current = progressContext
+            setDragContext(progressContext)
             latestPctRef.current = pct
             lastLiveSeekRef.current = performance.now()
             setDragPct(pct * 100)

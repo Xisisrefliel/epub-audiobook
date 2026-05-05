@@ -274,11 +274,58 @@ export function ReaderPaginated({
   const totalBookPages =
     chapterPageCounts?.reduce((sum, count) => sum + count, 0) ?? 0;
 
+  const activeWordPageIndex = useMemo(() => {
+    if (
+      !activeWord ||
+      activeWord.sentenceId !== currentSentenceId ||
+      !layoutInfo ||
+      !pageHeight
+    ) {
+      return -1;
+    }
+    return findPageIndexForActiveWord(
+      chapter,
+      activeWord,
+      layoutInfo,
+      pageHeight,
+      pageFontSize,
+      pageLineHeight,
+    );
+  }, [
+    activeWord,
+    chapter,
+    currentSentenceId,
+    layoutInfo,
+    pageFontSize,
+    pageHeight,
+    pageLineHeight,
+  ]);
+
   useEffect(() => {
     onCurrentSentenceVisibilityChange(
-      !!currentSentenceId && !!currentPage?.sentenceIds.has(currentSentenceId),
+      !!currentSentenceId &&
+        (activeWordPageIndex >= 0
+          ? activeWordPageIndex === pageIndex
+          : !!currentPage?.sentenceIds.has(currentSentenceId)),
     );
-  }, [currentPage, currentSentenceId, onCurrentSentenceVisibilityChange]);
+  }, [
+    activeWordPageIndex,
+    currentPage,
+    currentSentenceId,
+    onCurrentSentenceVisibilityChange,
+    pageIndex,
+  ]);
+
+  useEffect(() => {
+    if (activeWordPageIndex < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      setPageIndex((prev) =>
+        prev === activeWordPageIndex ? prev : activeWordPageIndex,
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeWordPageIndex]);
+
 
   useEffect(() => {
     if (chapterTotal === 0 || totalBookPages === 0) {
@@ -1022,6 +1069,71 @@ function findPageIndexForSentence(
     });
   }
   return found;
+}
+
+function findPageIndexForActiveWord(
+  chapter: Chapter,
+  activeWord: ActiveWord,
+  layoutInfo: { colCount: number; columnWidth: number },
+  pageHeight: number,
+  fontSize: number,
+  lineHeight: number,
+) {
+  const { colCount, columnWidth } = layoutInfo;
+  const font = `${fontSize}px ${SERIF_STACK}`;
+  const renderedLineHeight = getRenderedLineHeight(fontSize, lineHeight);
+  const paragraphGapHeight = fontSize * lineHeight * PARAGRAPH_GAP_LINES;
+  let pageIndex = 0;
+  let colIdx = 0;
+  let colUsed = 0;
+  let found = -1;
+  let wordOffset: number | null = null;
+
+  const advanceColumn = () => {
+    colIdx++;
+    colUsed = 0;
+    if (colIdx >= colCount) {
+      pageIndex++;
+      colIdx = 0;
+    }
+  };
+
+  for (const para of chapter.paragraphs) {
+    if (found >= 0) break;
+    walkParagraphLineParts(para, font, columnWidth, ({ parts, lineIndex }) => {
+      if (found >= 0) return false;
+      const startsParagraph = lineIndex === 0;
+      const gap = colUsed > 0 && startsParagraph ? paragraphGapHeight : 0;
+      const nextHeight = gap + renderedLineHeight;
+      if (colUsed > 0 && colUsed + nextHeight > pageHeight) advanceColumn();
+
+      const activePart = parts.find((part) => part.id === activeWord.sentenceId);
+      if (activePart) {
+        wordOffset ??= getActiveWordSentenceOffset(activePart.sentenceText, activeWord);
+        if (wordOffset !== null && partContainsOffset(activePart, wordOffset)) {
+          found = pageIndex;
+          return false;
+        }
+      }
+
+      colUsed +=
+        (colUsed > 0 && startsParagraph ? paragraphGapHeight : 0) +
+        renderedLineHeight;
+    });
+  }
+
+  return found;
+}
+
+function getActiveWordSentenceOffset(sentenceText: string, activeWord: ActiveWord) {
+  const target = normalizeWord(activeWord.text);
+  if (!target) return null;
+  const matches = Array.from(sentenceText.matchAll(/[\p{L}\p{N}]+/gu));
+  const sameWordMatches = matches.filter(
+    (match) => normalizeWord(match[0]) === target,
+  );
+  const sentenceMatch = sameWordMatches[activeWord.occurrence];
+  return sentenceMatch?.index ?? null;
 }
 
 function PageNav({

@@ -10,6 +10,7 @@ import { Bookmark, ChevronLeft, ChevronRight } from "lucide-react";
 import type {
   ActiveWord,
   Book,
+  BookmarkPageInfo,
   Bookmark as BookmarkAnchor,
   Chapter,
   PaginationInfo,
@@ -19,7 +20,6 @@ import {
   walkParagraphLineParts,
   type TextPart,
 } from "../utils/pretextLayout";
-import { BookmarkHighlight } from "./BookmarkHighlight";
 import { SentenceHighlight } from "./SentenceHighlight";
 import { WordHighlight } from "./WordHighlight";
 
@@ -64,6 +64,7 @@ type Props = {
   onBookmarkToggle: (id: string, offset: number) => void;
   onLocationChange: (id: string | null) => void;
   onPaginationChange: (info: PaginationInfo | null) => void;
+  onBookmarkPagesChange: (pages: Record<string, BookmarkPageInfo>) => void;
   syncKey: number;
   onCurrentSentenceVisibilityChange: (visible: boolean) => void;
 };
@@ -83,6 +84,7 @@ export function ReaderPaginated({
   onBookmarkToggle,
   onLocationChange,
   onPaginationChange,
+  onBookmarkPagesChange,
   syncKey,
   onCurrentSentenceVisibilityChange,
 }: Props) {
@@ -102,12 +104,12 @@ export function ReaderPaginated({
   const [pageIndex, setPageIndex] = useState(0);
   const [hoveredBookmarkTarget, setHoveredBookmarkTarget] =
     useState<BookmarkTarget | null>(null);
-  const [pressingBookmarkSentenceId, setPressingBookmarkSentenceId] =
-    useState<string | null>(null);
   const longPressRef = useRef<{
     timer: number;
     feedbackTimer: number;
     pointerId: number;
+    sentenceId: string;
+    feedbackEl: HTMLElement | null;
     x: number;
     y: number;
   } | null>(null);
@@ -302,6 +304,49 @@ export function ReaderPaginated({
   }, [onPaginationChange]);
 
   useEffect(() => {
+    if (!layoutInfo || !pageHeight || !chapterPageCounts) {
+      onBookmarkPagesChange({});
+      return;
+    }
+
+    const pages: Record<string, BookmarkPageInfo> = {};
+    for (const sentenceId of bookmarkBySentenceId.keys()) {
+      const chapterIndexForBookmark = book.chapters.findIndex((ch) =>
+        ch.paragraphs.some((p) =>
+          p.sentences.some((sentence) => sentence.id === sentenceId),
+        ),
+      );
+      if (chapterIndexForBookmark < 0) continue;
+      const pageIndexInChapter = findPageIndexForSentence(
+        book.chapters[chapterIndexForBookmark],
+        sentenceId,
+        layoutInfo,
+        pageHeight,
+        pageFontSize,
+        pageLineHeight,
+      );
+      if (pageIndexInChapter < 0) continue;
+      const bookPageIndex =
+        chapterPageCounts
+          .slice(0, chapterIndexForBookmark)
+          .reduce((sum, count) => sum + count, 0) + pageIndexInChapter;
+      pages[sentenceId] = { pageIndex: bookPageIndex, totalPages: totalBookPages };
+    }
+
+    onBookmarkPagesChange(pages);
+  }, [
+    book.chapters,
+    bookmarkBySentenceId,
+    chapterPageCounts,
+    layoutInfo,
+    onBookmarkPagesChange,
+    pageFontSize,
+    pageHeight,
+    pageLineHeight,
+    totalBookPages,
+  ]);
+
+  useEffect(() => {
     if (suppressNextAnchorSyncRef.current) {
       suppressNextAnchorSyncRef.current = false;
       return;
@@ -338,10 +383,11 @@ export function ReaderPaginated({
 
   const cancelLongPress = () => {
     if (!longPressRef.current) return;
+    const sentenceId = longPressRef.current.sentenceId;
     window.clearTimeout(longPressRef.current.timer);
     window.clearTimeout(longPressRef.current.feedbackTimer);
+    setPressFeedback(sentenceId, false);
     longPressRef.current = null;
-    setPressingBookmarkSentenceId(null);
   };
 
   const startBookmarkLongPress = (
@@ -352,17 +398,24 @@ export function ReaderPaginated({
     if (event.pointerType === "mouse" && event.button !== 0) return;
     cancelLongPress();
     const pointerId = event.pointerId;
+    const feedbackEl = event.currentTarget.querySelector<HTMLElement>(
+      ".sentence-press-feedback",
+    );
     longPressRef.current = {
       feedbackTimer: window.setTimeout(() => {
-        setPressingBookmarkSentenceId(sentenceId);
+        setPressFeedback(sentenceId, true);
       }, LONG_PRESS_FEEDBACK_MS),
       timer: window.setTimeout(() => {
         suppressNextClickRef.current = true;
         onBookmarkToggle(sentenceId, offset);
-        setPressingBookmarkSentenceId(null);
-        longPressRef.current = null;
+        requestAnimationFrame(() => {
+          if (longPressRef.current?.sentenceId === sentenceId)
+            setPressFeedback(sentenceId, true);
+        });
       }, LONG_PRESS_BOOKMARK_MS),
       pointerId,
+      sentenceId,
+      feedbackEl,
       x: event.clientX,
       y: event.clientY,
     };
@@ -473,7 +526,7 @@ export function ReaderPaginated({
           onPointerCancel={() => {
             touchStartXRef.current = null;
           }}
-          className="relative isolate overflow-hidden px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
+          className="relative isolate overflow-visible px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
           style={{
             fontSize: `${pageFontSize}px`,
             lineHeight: pageLineHeight,
@@ -481,13 +534,6 @@ export function ReaderPaginated({
             fontFamily: SERIF_STACK,
           }}
         >
-          <BookmarkHighlight
-            bookmarkIds={[...bookmarkBySentenceId.keys()]}
-            pressingId={pressingBookmarkSentenceId}
-            articleRef={articleRef}
-            fontSize={pageFontSize}
-            refreshKey={`bookmarks-pages-${book.id}-${chapterIndex}-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${pageFontSize}-${pageLineHeight}-${measure}-${bookmarkBySentenceId.size}-${pressingBookmarkSentenceId ?? ""}`}
-          />
           <SentenceHighlight
             activeId={currentSentenceId}
             articleRef={articleRef}
@@ -572,8 +618,6 @@ export function ReaderPaginated({
                       {line.parts.map((part, pi) => {
                         const isActive = part.id === currentSentenceId;
                         const isBookmarked = bookmarkBySentenceId.has(part.id);
-                        const isPressingBookmark =
-                          pressingBookmarkSentenceId === part.id;
                         return (
                           <span
                             key={`${part.id}-${pi}`}
@@ -621,9 +665,6 @@ export function ReaderPaginated({
                               (isBookmarked && !isActive
                                 ? "text-rose-950 dark:text-rose-100 "
                                 : "") +
-                              (isPressingBookmark
-                                ? "text-rose-950 duration-300 dark:text-rose-50 "
-                                : "") +
                               (isActive
                                 ? "text-zinc-900 dark:text-zinc-50"
                                 : "hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50")
@@ -633,10 +674,11 @@ export function ReaderPaginated({
                             <span
                               className={
                                 "sentence-press-feedback rounded-sm box-decoration-clone " +
+                                (pi === 0 ? "sentence-line-start " : "") +
+                                (isBookmarked ? "bookmark-text-highlight " : "") +
                                 (isActive && isBookmarked
-                                  ? "active-bookmark-cue "
-                                  : "") +
-                                (isPressingBookmark ? "is-pressing" : "")
+                                  ? "active-bookmark-cue"
+                                  : "")
                               }
                             >
                               <HighlightedText
@@ -706,6 +748,14 @@ function BookmarkButton({
 
 function partContainsOffset(part: TextPart, offset: number) {
   return offset >= part.sentenceOffset && offset < part.sentenceOffset + part.text.length;
+}
+
+function setPressFeedback(sentenceId: string, pressing: boolean) {
+  document
+    .querySelectorAll<HTMLElement>(
+      `[data-sid="${CSS.escape(sentenceId)}"] .sentence-press-feedback`,
+    )
+    .forEach((el) => el.classList.toggle("is-pressing", pressing));
 }
 
 function HighlightedText({

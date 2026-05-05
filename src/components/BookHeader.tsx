@@ -1,4 +1,4 @@
-import { Library, List, Settings } from 'lucide-react'
+import { Bookmark, Library, List, Settings } from 'lucide-react'
 import type { Book, Chapter, ReaderMode } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
 
@@ -10,6 +10,7 @@ type Props = {
   onOpenSettings: () => void
   onOpenLibrary: () => void
   onOpenToc: () => void
+  onOpenBookmarks: () => void
 }
 
 export function BookHeader({
@@ -20,6 +21,7 @@ export function BookHeader({
   onOpenSettings,
   onOpenLibrary,
   onOpenToc,
+  onOpenBookmarks,
 }: Props) {
   const chapterIndex = Math.max(0, book.chapters.findIndex((ch) => ch.id === chapter.id))
   const chapterTitle = getChapterDisplayTitle(book, chapterIndex)
@@ -56,6 +58,16 @@ export function BookHeader({
           className="control-button h-9 w-9 sm:h-9 sm:w-9"
         >
           <List className="h-[18px] w-[18px]" strokeWidth={2} />
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenBookmarks}
+          aria-label="Bookmarks"
+          title="Bookmarks"
+          className="control-button h-9 w-9 sm:h-9 sm:w-9"
+        >
+          <Bookmark className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
 
         <button

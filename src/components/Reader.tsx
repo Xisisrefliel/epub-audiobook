@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { ActiveWord, Book, Bookmark, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
+import type { ActiveWord, Book, Bookmark, BookmarkPageInfo, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
 import { ReaderScroll } from './ReaderScroll'
 import { ReaderPaginated } from './ReaderPaginated'
 
@@ -19,14 +19,21 @@ type Props = {
   onBookmarkToggle: (id: string, offset: number) => void
   onLocationChange: (id: string | null) => void
   onPaginationChange: (info: PaginationInfo | null) => void
+  onBookmarkPagesChange: (pages: Record<string, BookmarkPageInfo>) => void
   scrollRequest: ScrollRequest | null
   syncKey: number
   onCurrentSentenceVisibilityChange: (visible: boolean) => void
 }
 
-export const Reader = memo(function Reader({ onPaginationChange, ...props }: Props) {
+export const Reader = memo(function Reader({ onPaginationChange, onBookmarkPagesChange, ...props }: Props) {
   if (props.mode === 'paginated') {
-    return <ReaderPaginated {...props} onPaginationChange={onPaginationChange} />
+    return (
+      <ReaderPaginated
+        {...props}
+        onPaginationChange={onPaginationChange}
+        onBookmarkPagesChange={onBookmarkPagesChange}
+      />
+    )
   }
   return <ReaderScroll {...props} />
 })

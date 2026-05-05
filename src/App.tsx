@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Effect } from 'effect'
 import { BookHeader } from './components/BookHeader'
 import { Reader } from './components/Reader'
 import { PlaybackBar } from './components/PlaybackBar'
 import { ReaderSettings } from './components/ReaderSettings'
 import { TableOfContents } from './components/TableOfContents'
+import { BookmarksMenu, type BookmarkMenuItem } from './components/BookmarksMenu'
 import { BookLibrary } from './components/BookLibrary'
 import { sampleBook } from './data/sampleChapter'
 import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech } from './tts/kokoroTts'
 import type { TtsAudio } from './tts/kokoroTts'
-import type { ActiveWord, Book, Bookmark, BookmarkMap, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
+import { getChapterDisplayTitle } from './utils/chapterTitle'
+import type { ActiveWord, Book, Bookmark, BookmarkMap, BookmarkPageInfo, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
 const PLAYBACK_SPEED_STORAGE_KEY = `${STORAGE_PREFIX}playbackSpeed`
@@ -141,6 +143,7 @@ export default function App() {
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [tocOpen, setTocOpen] = useState(false)
+  const [bookmarksOpen, setBookmarksOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(() => readStoredPlaybackSpeed(storedSettings))
@@ -151,6 +154,7 @@ export default function App() {
   const [chapterIndex, setChapterIndex] = useState(() => Math.max(0, initialProgress.chapterIndex ?? 0))
   const [isLoadingBook, setIsLoadingBook] = useState(false)
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo | null>(null)
+  const [bookmarkPages, setBookmarkPages] = useState<Record<string, BookmarkPageInfo>>({})
   const [counterMode, setCounterMode] = useState<CounterMode>(initialProgress.counterMode === 'book' ? 'book' : 'chapter')
   const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null)
   const [syncKey, setSyncKey] = useState(0)
@@ -210,6 +214,28 @@ export default function App() {
     ;(bookmarksByBook[book.id] ?? []).forEach((bookmark) => map.set(bookmark.sentenceId, bookmark))
     return map
   }, [book.id, bookmarksByBook])
+
+  const bookmarkMenuItems = useMemo<BookmarkMenuItem[]>(() => {
+    return (bookmarksByBook[book.id] ?? [])
+      .map((bookmark) => {
+        const meta = sentenceMeta.byId.get(bookmark.sentenceId)
+        const sentence = sentences[sentenceIndexById.get(bookmark.sentenceId) ?? -1]
+        if (!meta || !sentence) return null
+        const page = bookmarkPages[bookmark.sentenceId]
+        return {
+          id: bookmark.sentenceId,
+          sentence: sentence.text,
+          chapter: getChapterDisplayTitle(book, meta.chapterIndex),
+          pageLabel: page ? `Page ${page.pageIndex + 1}` : 'Page --',
+        }
+      })
+      .filter((item): item is BookmarkMenuItem => item !== null)
+      .sort((a, b) => {
+        const aMeta = sentenceMeta.byId.get(a.id)
+        const bMeta = sentenceMeta.byId.get(b.id)
+        return (aMeta?.bookSentenceIndex ?? 0) - (bMeta?.bookSentenceIndex ?? 0)
+      })
+  }, [book, bookmarkPages, bookmarksByBook, sentenceIndexById, sentenceMeta, sentences])
 
   const scrollProgressInfo = useMemo<ScrollProgressInfo | null>(() => {
     const anchorId = locationSentenceId ?? currentSentenceId ?? chapter?.paragraphs[0]?.sentences[0]?.id
@@ -288,6 +314,30 @@ export default function App() {
       }
     }
   }
+
+  const selectBookmark = (id: string) => {
+    const meta = sentenceMeta.byId.get(id)
+    if (meta) setChapterIndex(meta.chapterIndex)
+    selectSentence(id)
+  }
+
+  const updateBookmarkPages = useCallback((pages: Record<string, BookmarkPageInfo>) => {
+    setBookmarkPages((current) => {
+      const currentKeys = Object.keys(current)
+      const nextKeys = Object.keys(pages)
+      if (
+        currentKeys.length === nextKeys.length &&
+        nextKeys.every((key) => {
+          const currentPage = current[key]
+          const nextPage = pages[key]
+          return currentPage?.pageIndex === nextPage.pageIndex && currentPage?.totalPages === nextPage.totalPages
+        })
+      ) {
+        return current
+      }
+      return pages
+    })
+  }, [])
 
   const toggleBookmark = (sentenceId: string, offset: number) => {
     setBookmarksByBook((current) => {
@@ -547,9 +597,30 @@ export default function App() {
         chapter={chapter}
         mode={mode}
         onModeChange={setMode}
-        onOpenLibrary={() => setLibraryOpen(true)}
-        onOpenToc={() => setTocOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenLibrary={() => {
+          setTocOpen(false)
+          setBookmarksOpen(false)
+          setSettingsOpen(false)
+          setLibraryOpen(true)
+        }}
+        onOpenToc={() => {
+          setLibraryOpen(false)
+          setBookmarksOpen(false)
+          setSettingsOpen(false)
+          setTocOpen(true)
+        }}
+        onOpenBookmarks={() => {
+          setLibraryOpen(false)
+          setTocOpen(false)
+          setSettingsOpen(false)
+          setBookmarksOpen(true)
+        }}
+        onOpenSettings={() => {
+          setLibraryOpen(false)
+          setTocOpen(false)
+          setBookmarksOpen(false)
+          setSettingsOpen(true)
+        }}
       />
 
       <input
@@ -588,6 +659,7 @@ export default function App() {
           onBookmarkToggle={toggleBookmark}
           onLocationChange={setLocationSentenceId}
           onPaginationChange={setPaginationInfo}
+          onBookmarkPagesChange={updateBookmarkPages}
           scrollRequest={scrollRequest}
           syncKey={syncKey}
           onCurrentSentenceVisibilityChange={setIsCurrentSentenceVisible}
@@ -628,6 +700,14 @@ export default function App() {
         open={tocOpen}
         onClose={() => setTocOpen(false)}
         onSelectChapter={changeChapter}
+      />
+
+      <BookmarksMenu
+        open={bookmarksOpen}
+        bookTitle={book.title}
+        items={bookmarkMenuItems}
+        onClose={() => setBookmarksOpen(false)}
+        onSelectBookmark={selectBookmark}
       />
 
       <ReaderSettings

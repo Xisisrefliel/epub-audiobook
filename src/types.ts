@@ -48,6 +48,11 @@ export type PaginationInfo = {
   chapterTotal: number
 }
 
+export type BookmarkPageInfo = {
+  pageIndex: number
+  totalPages: number
+}
+
 export type ScrollProgressInfo = {
   chapterIndex: number
   chapterTotal: number

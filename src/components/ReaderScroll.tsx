@@ -3,7 +3,6 @@ import { Bookmark } from 'lucide-react'
 import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
 import { getParagraphText, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
-import { BookmarkHighlight } from './BookmarkHighlight'
 import { SentenceHighlight } from './SentenceHighlight'
 import { WordHighlight } from './WordHighlight'
 
@@ -72,11 +71,12 @@ export function ReaderScroll({
   const activeRef = useRef<HTMLSpanElement | null>(null)
   const [contentWidth, setContentWidth] = useState(0)
   const [hoveredBookmarkTarget, setHoveredBookmarkTarget] = useState<BookmarkTarget | null>(null)
-  const [pressingBookmarkSentenceId, setPressingBookmarkSentenceId] = useState<string | null>(null)
   const longPressRef = useRef<{
     timer: number
     feedbackTimer: number
     pointerId: number
+    sentenceId: string
+    feedbackEl: HTMLElement | null
     x: number
     y: number
   } | null>(null)
@@ -133,10 +133,11 @@ export function ReaderScroll({
 
   const cancelLongPress = () => {
     if (!longPressRef.current) return
+    const sentenceId = longPressRef.current.sentenceId
     window.clearTimeout(longPressRef.current.timer)
     window.clearTimeout(longPressRef.current.feedbackTimer)
+    setPressFeedback(sentenceId, false)
     longPressRef.current = null
-    setPressingBookmarkSentenceId(null)
   }
 
   const startBookmarkLongPress = (
@@ -147,17 +148,21 @@ export function ReaderScroll({
     if (event.pointerType === 'mouse' && event.button !== 0) return
     cancelLongPress()
     const pointerId = event.pointerId
+    const feedbackEl = event.currentTarget.querySelector<HTMLElement>('.sentence-press-feedback')
     longPressRef.current = {
       feedbackTimer: window.setTimeout(() => {
-        setPressingBookmarkSentenceId(sentenceId)
+        setPressFeedback(sentenceId, true)
       }, LONG_PRESS_FEEDBACK_MS),
       timer: window.setTimeout(() => {
         suppressNextClickRef.current = true
         onBookmarkToggle(sentenceId, offset)
-        setPressingBookmarkSentenceId(null)
-        longPressRef.current = null
+        requestAnimationFrame(() => {
+          if (longPressRef.current?.sentenceId === sentenceId) setPressFeedback(sentenceId, true)
+        })
       }, LONG_PRESS_BOOKMARK_MS),
       pointerId,
+      sentenceId,
+      feedbackEl,
       x: event.clientX,
       y: event.clientY,
     }
@@ -299,13 +304,6 @@ export function ReaderScroll({
           fontFamily: SERIF_STACK,
         }}
       >
-        <BookmarkHighlight
-          bookmarkIds={[...bookmarkBySentenceId.keys()]}
-          pressingId={pressingBookmarkSentenceId}
-          articleRef={articleRef}
-          fontSize={fontSize}
-          refreshKey={`bookmarks-scroll-${book.id}-${lines.length}-${contentWidth}-${fontSize}-${lineHeight}-${measure}-${bookmarkBySentenceId.size}-${pressingBookmarkSentenceId ?? ''}`}
-        />
         <SentenceHighlight
           activeId={currentSentenceId}
           articleRef={articleRef}
@@ -363,7 +361,6 @@ export function ReaderScroll({
               {line.parts.map((part, pi) => {
                 const isActive = part.id === currentSentenceId
                 const isBookmarked = bookmarkBySentenceId.has(part.id)
-                const isPressingBookmark = pressingBookmarkSentenceId === part.id
                 return (
                   <span
                     key={`${part.id}-${pi}`}
@@ -401,9 +398,6 @@ export function ReaderScroll({
                       (isBookmarked && !isActive
                         ? 'text-rose-950 dark:text-rose-100 '
                         : '') +
-                      (isPressingBookmark
-                        ? 'text-rose-950 duration-300 dark:text-rose-50 '
-                        : '') +
                       (isActive
                         ? 'text-zinc-900 dark:text-zinc-50'
                         : 'hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50')
@@ -413,8 +407,9 @@ export function ReaderScroll({
                     <span
                       className={
                         'sentence-press-feedback rounded-sm box-decoration-clone ' +
-                        (isActive && isBookmarked ? 'active-bookmark-cue ' : '') +
-                        (isPressingBookmark ? 'is-pressing' : '')
+                        (pi === 0 ? 'sentence-line-start ' : '') +
+                        (isBookmarked ? 'bookmark-text-highlight ' : '') +
+                        (isActive && isBookmarked ? 'active-bookmark-cue' : '')
                       }
                     >
                       <HighlightedText part={part} activeWord={activeWord} />
@@ -471,6 +466,12 @@ function BookmarkButton({
 
 function partContainsOffset(part: TextPart, offset: number) {
   return offset >= part.sentenceOffset && offset < part.sentenceOffset + part.text.length
+}
+
+function setPressFeedback(sentenceId: string, pressing: boolean) {
+  document
+    .querySelectorAll<HTMLElement>(`[data-sid="${CSS.escape(sentenceId)}"] .sentence-press-feedback`)
+    .forEach((el) => el.classList.toggle('is-pressing', pressing))
 }
 
 function HighlightedText({ part, activeWord }: { part: TextPart; activeWord: ActiveWord | null }) {

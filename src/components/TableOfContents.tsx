@@ -30,8 +30,16 @@ export function TableOfContents({
     [book],
   )
 
-  const { shouldRender, sheetRef, sheetStyle, sheetProps, backdropStyle, handleProps } =
-    useBottomSheetDrag({ open, onClose })
+  const {
+    shouldRender,
+    sheetRef,
+    sheetStyle,
+    sheetProps,
+    backdropStyle,
+    handleProps,
+    drawerBackdropClass,
+    drawerPanelClass,
+  } = useBottomSheetDrag({ open, onClose })
 
   if (!shouldRender) return null
 
@@ -44,7 +52,9 @@ export function TableOfContents({
       <button
         type="button"
         aria-label="Close table of contents"
-        className="absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55"
+        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55', drawerBackdropClass]
+          .filter(Boolean)
+          .join(' ')}
         style={backdropStyle}
         onClick={onClose}
       />
@@ -58,7 +68,12 @@ export function TableOfContents({
       <aside
         style={sheetStyle}
         {...sheetProps}
-        className="relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950"
+        className={[
+          'relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950',
+          drawerPanelClass,
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
         <div
           {...handleProps}

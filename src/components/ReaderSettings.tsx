@@ -31,8 +31,16 @@ export function ReaderSettings({
   mode,
   onModeChange,
 }: Props) {
-  const { shouldRender, sheetRef, sheetStyle, sheetProps, backdropStyle, handleProps } =
-    useBottomSheetDrag({ open, onClose })
+  const {
+    shouldRender,
+    sheetRef,
+    sheetStyle,
+    sheetProps,
+    backdropStyle,
+    handleProps,
+    drawerBackdropClass,
+    drawerPanelClass,
+  } = useBottomSheetDrag({ open, onClose })
 
   if (!shouldRender) return null
 
@@ -44,7 +52,9 @@ export function ReaderSettings({
       aria-modal="true"
     >
       <div
-        className="absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55"
+        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55', drawerBackdropClass]
+          .filter(Boolean)
+          .join(' ')}
         aria-hidden
         style={backdropStyle}
       />
@@ -58,7 +68,12 @@ export function ReaderSettings({
         onClick={(e) => e.stopPropagation()}
         style={sheetStyle}
         {...sheetProps}
-        className="relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950"
+        className={[
+          'relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950',
+          drawerPanelClass,
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
         <div
           {...handleProps}
@@ -214,10 +229,10 @@ function Segmented({
 }) {
   const activeIndex = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <div className="relative flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="relative flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-black">
       <span
         aria-hidden
-        className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
         style={{
           width: `calc((100% - 4px) / ${options.length})`,
           transform: `translate3d(${activeIndex * 100}%, 0, 0)`,

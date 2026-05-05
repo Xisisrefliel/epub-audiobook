@@ -10,7 +10,7 @@ import { sampleBook } from './data/sampleChapter'
 import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech } from './tts/kokoroTts'
 import type { TtsAudio } from './tts/kokoroTts'
-import type { ActiveWord, Book, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
+import type { ActiveWord, Book, Bookmark, BookmarkMap, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
 const PLAYBACK_SPEED_STORAGE_KEY = `${STORAGE_PREFIX}playbackSpeed`
@@ -19,6 +19,7 @@ const LIBRARY_STORAGE_KEY = `${STORAGE_PREFIX}library`
 const ACTIVE_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}activeBookId`
 const PROGRESS_STORAGE_KEY = `${STORAGE_PREFIX}progress`
 const PROGRESS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}progressByBook`
+const BOOKMARKS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}bookmarksByBook`
 const SETTINGS_STORAGE_KEY = `${STORAGE_PREFIX}settings`
 const PREFETCH_AHEAD_SENTENCES = 4
 const BUFFERING_DELAY_MS = 350
@@ -80,6 +81,23 @@ function readProgressByBook() {
   return readJson<Record<string, StoredProgress>>(PROGRESS_BY_BOOK_STORAGE_KEY) ?? {}
 }
 
+function readBookmarksByBook() {
+  const stored = readJson<Record<string, Array<string | Partial<Bookmark>>>>(BOOKMARKS_BY_BOOK_STORAGE_KEY) ?? {}
+  return Object.fromEntries(
+    Object.entries(stored).map(([bookId, bookmarks]) => [
+      bookId,
+      bookmarks
+        .map((bookmark) => {
+          if (typeof bookmark === 'string') return { sentenceId: bookmark, offset: 0 }
+          return typeof bookmark.sentenceId === 'string'
+            ? { sentenceId: bookmark.sentenceId, offset: Math.max(0, Number(bookmark.offset) || 0) }
+            : null
+        })
+        .filter((bookmark): bookmark is Bookmark => bookmark !== null),
+    ]),
+  )
+}
+
 function normalizeWord(value: string) {
   return value.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
 }
@@ -102,9 +120,10 @@ function useTheme(theme: Theme) {
 }
 
 export default function App() {
-  const storedSettings = useMemo(readStoredSettings, [])
-  const progressByBook = useMemo(readProgressByBook, [])
-  const fallbackProgress = useMemo(readStoredProgress, [])
+  const storedSettings = useMemo(() => readStoredSettings(), [])
+  const progressByBook = useMemo(() => readProgressByBook(), [])
+  const storedBookmarksByBook = useMemo(() => readBookmarksByBook(), [])
+  const fallbackProgress = useMemo(() => readStoredProgress(), [])
   const [mode, setMode] = useState<ReaderMode>(storedSettings.mode === 'paginated' ? 'paginated' : 'scroll')
   const [theme, setTheme] = useState<Theme>(
     storedSettings.theme === 'light' || storedSettings.theme === 'dark' || storedSettings.theme === 'system'
@@ -185,6 +204,12 @@ export default function App() {
   const [currentSentenceId, setCurrentSentenceId] = useState<string | null>(initialProgress.currentSentenceId ?? null)
   const [locationSentenceId, setLocationSentenceId] = useState<string | null>(initialProgress.locationSentenceId ?? null)
   const [activeWord, setActiveWord] = useState<ActiveWord | null>(null)
+  const [bookmarksByBook, setBookmarksByBook] = useState<BookmarkMap>(storedBookmarksByBook)
+  const bookmarkBySentenceId = useMemo(() => {
+    const map = new Map<string, Bookmark>()
+    ;(bookmarksByBook[book.id] ?? []).forEach((bookmark) => map.set(bookmark.sentenceId, bookmark))
+    return map
+  }, [book.id, bookmarksByBook])
 
   const scrollProgressInfo = useMemo<ScrollProgressInfo | null>(() => {
     const anchorId = locationSentenceId ?? currentSentenceId ?? chapter?.paragraphs[0]?.sentences[0]?.id
@@ -214,7 +239,9 @@ export default function App() {
     writeJson(SETTINGS_STORAGE_KEY, { mode, theme, fontSize, lineHeight, measure, speed })
     try {
       window.localStorage.setItem(PLAYBACK_SPEED_STORAGE_KEY, String(speed))
-    } catch {}
+    } catch {
+      // Ignore storage failures; settings persistence is best-effort.
+    }
   }, [mode, theme, fontSize, lineHeight, measure, speed])
 
   useEffect(() => {
@@ -228,9 +255,15 @@ export default function App() {
   }, [library])
 
   useEffect(() => {
+    writeJson(BOOKMARKS_BY_BOOK_STORAGE_KEY, bookmarksByBook)
+  }, [bookmarksByBook])
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(ACTIVE_BOOK_STORAGE_KEY, activeBookId)
-    } catch {}
+    } catch {
+      // Ignore storage failures; the in-memory active book still updates.
+    }
   }, [activeBookId])
 
   const selectSentence = (id: string | null) => {
@@ -254,6 +287,17 @@ export default function App() {
         })
       }
     }
+  }
+
+  const toggleBookmark = (sentenceId: string, offset: number) => {
+    setBookmarksByBook((current) => {
+      const existing = current[book.id] ?? []
+      const exists = existing.some((bookmark) => bookmark.sentenceId === sentenceId)
+      const nextBookBookmarks = exists
+        ? existing.filter((bookmark) => bookmark.sentenceId !== sentenceId)
+        : [...existing, { sentenceId, offset }]
+      return { ...current, [book.id]: nextBookBookmarks }
+    })
   }
 
   const abortPrefetches = () => {
@@ -298,7 +342,7 @@ export default function App() {
     if (sentences.length === 0) return
 
     const sentence = (() => {
-      if (counterMode === 'chapter') {
+      if (mode === 'paginated' && counterMode === 'chapter') {
         const chapterSentences = book.chapters[chapterIndex]?.paragraphs.flatMap((p) => p.sentences) ?? []
         if (chapterSentences.length === 0) return null
         return chapterSentences[Math.round(clampedPct * (chapterSentences.length - 1))]
@@ -539,7 +583,9 @@ export default function App() {
           currentSentenceId={currentSentenceId}
           locationSentenceId={locationSentenceId}
           activeWord={activeWord}
+          bookmarkBySentenceId={bookmarkBySentenceId}
           onSentenceSelect={selectSentence}
+          onBookmarkToggle={toggleBookmark}
           onLocationChange={setLocationSentenceId}
           onPaginationChange={setPaginationInfo}
           scrollRequest={scrollRequest}

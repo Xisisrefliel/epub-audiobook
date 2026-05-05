@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ActiveWord, Book, ScrollRequest } from '../types'
+import { Bookmark } from 'lucide-react'
+import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
 import { getParagraphText, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
 import { SentenceHighlight } from './SentenceHighlight'
@@ -28,6 +29,8 @@ type LineFragment = {
   endsParagraph: boolean
 }
 
+type BookmarkTarget = { lineKey: string; sentenceId: string; offset: number }
+
 type Props = {
   book: Book
   chapterIndex: number
@@ -37,7 +40,9 @@ type Props = {
   currentSentenceId: string | null
   locationSentenceId: string | null
   activeWord: ActiveWord | null
+  bookmarkBySentenceId: Map<string, BookmarkAnchor>
   onSentenceSelect: (id: string | null) => void
+  onBookmarkToggle: (id: string, offset: number) => void
   onLocationChange: (id: string | null) => void
   scrollRequest: ScrollRequest | null
   syncKey: number
@@ -52,7 +57,9 @@ export function ReaderScroll({
   currentSentenceId,
   locationSentenceId,
   activeWord,
+  bookmarkBySentenceId,
   onSentenceSelect,
+  onBookmarkToggle,
   onLocationChange,
   scrollRequest,
   onCurrentSentenceVisibilityChange,
@@ -60,6 +67,7 @@ export function ReaderScroll({
   const articleRef = useRef<HTMLElement | null>(null)
   const activeRef = useRef<HTMLSpanElement | null>(null)
   const [contentWidth, setContentWidth] = useState(0)
+  const [hoveredBookmarkTarget, setHoveredBookmarkTarget] = useState<BookmarkTarget | null>(null)
 
   useLayoutEffect(() => {
     const article = articleRef.current
@@ -252,8 +260,22 @@ export function ReaderScroll({
           <div style={{ height: virtual.top }} />
           {virtual.lines.map((line, offset) => {
             const li = virtual.start + offset
+            const lineKey = `${line.chapterId}-${line.paragraphId}-${li}`
+            const anchoredPart = line.parts.find((part) => {
+              const bookmark = bookmarkBySentenceId.get(part.id)
+              return bookmark ? partContainsOffset(part, bookmark.offset) : false
+            })
+            const anchoredBookmark = anchoredPart ? bookmarkBySentenceId.get(anchoredPart.id) : undefined
+            const target =
+              anchoredPart && anchoredBookmark
+                ? { sentenceId: anchoredPart.id, offset: anchoredBookmark.offset, isBookmarked: true }
+                : hoveredBookmarkTarget?.lineKey === lineKey
+                  ? { sentenceId: hoveredBookmarkTarget.sentenceId, offset: hoveredBookmarkTarget.offset, isBookmarked: false }
+                  : line.parts[0]
+                    ? { sentenceId: line.parts[0].id, offset: line.parts[0].sentenceOffset, isBookmarked: false }
+                    : null
             return (
-            <div key={`${line.chapterId}-${line.paragraphId}-${li}`}>
+            <div key={lineKey}>
               {line.chapterTitle && (
                 <h1
                   data-chapter-id={line.chapterId}
@@ -263,9 +285,20 @@ export function ReaderScroll({
                 </h1>
               )}
               <div
-                className={line.endsParagraph ? 'whitespace-nowrap' : 'whitespace-nowrap text-justify [text-align-last:justify]'}
+                className={
+                  'group/line relative ' +
+                  (line.endsParagraph ? 'whitespace-nowrap' : 'whitespace-nowrap text-justify [text-align-last:justify]')
+                }
                 style={{ marginTop: li > 0 && line.startsParagraph && !line.startsChapter ? `${fontSize * lineHeight}px` : undefined }}
               >
+              {target && (
+                <BookmarkButton
+                  isBookmarked={target.isBookmarked}
+                  sentenceId={target.sentenceId}
+                  offset={target.offset}
+                  onToggle={onBookmarkToggle}
+                />
+              )}
               {line.parts.map((part, pi) => {
                 const isActive = part.id === currentSentenceId
                 return (
@@ -278,6 +311,9 @@ export function ReaderScroll({
                     onClick={() => {
                       onLocationChange(part.id)
                       onSentenceSelect(part.id)
+                    }}
+                    onMouseEnter={() => {
+                      setHoveredBookmarkTarget({ lineKey, sentenceId: part.id, offset: part.sentenceOffset })
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -306,6 +342,47 @@ export function ReaderScroll({
       </article>
     </div>
   )
+}
+
+function BookmarkButton({
+  isBookmarked,
+  sentenceId,
+  offset,
+  onToggle,
+}: {
+  isBookmarked: boolean
+  sentenceId: string
+  offset: number
+  onToggle: (id: string, offset: number) => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
+      aria-pressed={isBookmarked}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle(sentenceId, offset)
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className={
+        'absolute -left-7 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 ' +
+        (isBookmarked
+          ? 'text-rose-900 opacity-90 dark:text-rose-300'
+          : 'text-zinc-500 opacity-0 dark:text-zinc-500')
+      }
+    >
+      <Bookmark
+        className="h-4 w-4"
+        strokeWidth={1.8}
+        fill={isBookmarked ? 'currentColor' : 'none'}
+      />
+    </button>
+  )
+}
+
+function partContainsOffset(part: TextPart, offset: number) {
+  return offset >= part.sentenceOffset && offset < part.sentenceOffset + part.text.length
 }
 
 function HighlightedText({ part, activeWord }: { part: TextPart; activeWord: ActiveWord | null }) {

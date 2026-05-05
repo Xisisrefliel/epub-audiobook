@@ -6,8 +6,14 @@ import {
   useState,
   type PointerEvent,
 } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { ActiveWord, Book, Chapter, PaginationInfo } from "../types";
+import { Bookmark, ChevronLeft, ChevronRight } from "lucide-react";
+import type {
+  ActiveWord,
+  Book,
+  Bookmark as BookmarkAnchor,
+  Chapter,
+  PaginationInfo,
+} from "../types";
 import {
   measureParagraphLines,
   walkParagraphLineParts,
@@ -31,6 +37,7 @@ type LineFragment = {
   startsParagraph: boolean;
   endsParagraph: boolean;
 };
+type BookmarkTarget = { lineKey: string; sentenceId: string; offset: number };
 type Column = { lines: LineFragment[] };
 type Page = {
   columns: Column[];
@@ -48,7 +55,9 @@ type Props = {
   currentSentenceId: string | null;
   locationSentenceId: string | null;
   activeWord: ActiveWord | null;
+  bookmarkBySentenceId: Map<string, BookmarkAnchor>;
   onSentenceSelect: (id: string | null) => void;
+  onBookmarkToggle: (id: string, offset: number) => void;
   onLocationChange: (id: string | null) => void;
   onPaginationChange: (info: PaginationInfo | null) => void;
   syncKey: number;
@@ -65,7 +74,9 @@ export function ReaderPaginated({
   currentSentenceId,
   locationSentenceId,
   activeWord,
+  bookmarkBySentenceId,
   onSentenceSelect,
+  onBookmarkToggle,
   onLocationChange,
   onPaginationChange,
   syncKey,
@@ -81,6 +92,8 @@ export function ReaderPaginated({
       typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT_PX,
   );
   const [pageIndex, setPageIndex] = useState(0);
+  const [hoveredBookmarkTarget, setHoveredBookmarkTarget] =
+    useState<BookmarkTarget | null>(null);
   const pageFontSize = isMobile ? Math.min(fontSize, 22) : fontSize;
   const pageLineHeight = isMobile ? Math.max(lineHeight, 1.55) : lineHeight;
   const suppressNextAnchorSyncRef = useRef(false);
@@ -374,21 +387,62 @@ export function ReaderPaginated({
             >
               {currentPage.columns.map((col, ci) => (
                 <div key={ci} className="min-w-0">
-                  {col.lines.map((line, li) => (
-                    <div
-                      key={`${line.paragraphId}-${li}`}
-                      className={
-                        line.endsParagraph
-                          ? "whitespace-nowrap"
-                          : "whitespace-nowrap text-justify [text-align-last:justify]"
-                      }
-                      style={{
-                        marginTop:
-                          li > 0 && line.startsParagraph
-                            ? `${pageFontSize * pageLineHeight * PARAGRAPH_GAP_LINES}px`
-                            : undefined,
-                      }}
-                    >
+                  {col.lines.map((line, li) => {
+                    const lineKey = `${ci}-${line.paragraphId}-${li}`;
+                    const anchoredPart = line.parts.find((part) => {
+                      const bookmark = bookmarkBySentenceId.get(part.id);
+                      return bookmark
+                        ? partContainsOffset(part, bookmark.offset)
+                        : false;
+                    });
+                    const anchoredBookmark = anchoredPart
+                      ? bookmarkBySentenceId.get(anchoredPart.id)
+                      : undefined;
+                    const target =
+                      anchoredPart && anchoredBookmark
+                        ? {
+                            sentenceId: anchoredPart.id,
+                            offset: anchoredBookmark.offset,
+                            isBookmarked: true,
+                          }
+                        : hoveredBookmarkTarget?.lineKey === lineKey
+                          ? {
+                              sentenceId: hoveredBookmarkTarget.sentenceId,
+                              offset: hoveredBookmarkTarget.offset,
+                              isBookmarked: false,
+                            }
+                          : line.parts[0]
+                            ? {
+                                sentenceId: line.parts[0].id,
+                                offset: line.parts[0].sentenceOffset,
+                                isBookmarked: false,
+                              }
+                            : null;
+
+                    return (
+                      <div
+                        key={lineKey}
+                        className={
+                          "group/line relative " +
+                          (line.endsParagraph
+                            ? "whitespace-nowrap"
+                            : "whitespace-nowrap text-justify [text-align-last:justify]")
+                        }
+                        style={{
+                          marginTop:
+                            li > 0 && line.startsParagraph
+                              ? `${pageFontSize * pageLineHeight * PARAGRAPH_GAP_LINES}px`
+                              : undefined,
+                        }}
+                      >
+                      {target && (
+                        <BookmarkButton
+                          isBookmarked={target.isBookmarked}
+                          sentenceId={target.sentenceId}
+                          offset={target.offset}
+                          onToggle={onBookmarkToggle}
+                        />
+                      )}
                       {line.parts.map((part, pi) => {
                         const isActive = part.id === currentSentenceId;
                         return (
@@ -400,6 +454,13 @@ export function ReaderPaginated({
                             onClick={() => {
                               onLocationChange(part.id);
                               onSentenceSelect(part.id);
+                            }}
+                            onMouseEnter={() => {
+                              setHoveredBookmarkTarget({
+                                lineKey,
+                                sentenceId: part.id,
+                                offset: part.sentenceOffset,
+                              });
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
@@ -423,8 +484,9 @@ export function ReaderPaginated({
                           </span>
                         );
                       })}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -440,6 +502,47 @@ export function ReaderPaginated({
       </div>
     </div>
   );
+}
+
+function BookmarkButton({
+  isBookmarked,
+  sentenceId,
+  offset,
+  onToggle,
+}: {
+  isBookmarked: boolean;
+  sentenceId: string;
+  offset: number;
+  onToggle: (id: string, offset: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+      aria-pressed={isBookmarked}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle(sentenceId, offset);
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className={
+        "absolute -left-7 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 " +
+        (isBookmarked
+          ? "text-rose-900 opacity-90 dark:text-rose-300"
+          : "text-zinc-500 opacity-0 dark:text-zinc-500")
+      }
+    >
+      <Bookmark
+        className="h-4 w-4"
+        strokeWidth={1.8}
+        fill={isBookmarked ? "currentColor" : "none"}
+      />
+    </button>
+  );
+}
+
+function partContainsOffset(part: TextPart, offset: number) {
+  return offset >= part.sentenceOffset && offset < part.sentenceOffset + part.text.length;
 }
 
 function HighlightedText({
@@ -718,7 +821,7 @@ function PageNav({
           type="button"
           onClick={onPrev}
           aria-label="Previous page"
-          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-100 px-3 text-sm font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-zinc-800/70 dark:text-zinc-300 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] dark:hoverable:hover:text-zinc-50 sm:flex-none sm:px-4"
+          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-100 px-3 text-sm font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-black dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:flex-none sm:px-4"
         >
           <ChevronLeft className="h-4 w-4" strokeWidth={2.25} />
           Prev
@@ -734,7 +837,7 @@ function PageNav({
           type="button"
           onClick={onNext}
           aria-label="Next page"
-          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-900 px-3 text-sm font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:flex-none sm:px-4 dark:bg-zinc-100 dark:text-zinc-900"
+          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-900 px-3 text-sm font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:flex-none sm:px-4 dark:bg-zinc-50 dark:text-zinc-950"
         >
           Next
           <ChevronRight className="h-4 w-4" strokeWidth={2.25} />

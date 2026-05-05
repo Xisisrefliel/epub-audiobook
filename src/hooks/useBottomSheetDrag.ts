@@ -9,6 +9,7 @@ const CLOSE_DISTANCE = 120
 const FLING_VELOCITY = 650
 const ENGAGE_THRESHOLD = 6
 const VELOCITY_WINDOW_MS = 80
+const DESKTOP_EXIT_MS = 200
 
 function rubberBand(delta: number, dim = 120) {
   if (!Number.isFinite(delta) || delta <= 0) return 0
@@ -90,6 +91,8 @@ type Phase = 'idle' | 'pending' | 'dragging'
 export function useBottomSheetDrag({ open, onClose }: Options) {
   const isMobile = useIsMobile()
   const [shouldRender, setShouldRender] = useState(open)
+  const [desktopMounted, setDesktopMounted] = useState(open)
+  const [desktopClosing, setDesktopClosing] = useState(false)
   const initialTranslateY = open ? 0 : typeof window !== 'undefined' ? window.innerHeight : 800
   const translateYRef = useRef(initialTranslateY)
   const [translateY, setTranslateY] = useState(initialTranslateY)
@@ -119,9 +122,32 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
     return () => window.removeEventListener('resize', updateVH)
   }, [])
 
-  // Lock background scroll and listen for Escape while open
+  const overlayVisible = isMobile ? shouldRender : desktopMounted
+
+  /* Drawer desktop lifecycle: delayed unmount for exit animation (same idea as BookLibrary). */
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!open) return
+    if (isMobile) return
+    if (open) {
+      setDesktopMounted(true)
+      setDesktopClosing(false)
+      return
+    }
+    if (!desktopMounted) return
+    setDesktopClosing(true)
+    const t = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDesktopMounted(false)
+        setDesktopClosing(false)
+      }
+    }, DESKTOP_EXIT_MS)
+    return () => clearTimeout(t)
+  }, [open, isMobile, desktopMounted])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Lock background scroll and listen for Escape while overlay is visible (incl. desktop exit)
+  useEffect(() => {
+    if (!overlayVisible) return
     const body = document.body
     const html = document.documentElement
     const prevBody = body.style.overflow
@@ -142,7 +168,7 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
       html.style.overflow = prevHtml
       window.removeEventListener('keydown', onKey)
     }
-  }, [open, onClose])
+  }, [overlayVisible, onClose])
 
   const updateVisuals = useCallback((y: number) => {
     if (!Number.isFinite(y)) return
@@ -340,18 +366,30 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
     [isMobile, onClose, pushSample, releaseVelocity, startSpring],
   )
 
+  const drawerBackdropClass = isMobile
+    ? undefined
+    : desktopClosing
+      ? 'animate-drawer-backdrop-out'
+      : 'animate-drawer-backdrop-in'
+  const drawerPanelClass = isMobile
+    ? undefined
+    : desktopClosing
+      ? 'animate-drawer-panel-out'
+      : 'animate-drawer-panel-in'
+
   return {
-    shouldRender: isMobile ? shouldRender : open,
+    shouldRender: isMobile ? shouldRender : desktopMounted,
     sheetRef,
     sheetStyle: {
-      transform: `translate3d(0, ${isMobile ? translateY : 0}px, 0)`,
+      transform: isMobile ? `translate3d(0, ${translateY}px, 0)` : undefined,
       willChange: isMobile ? 'transform' : undefined,
       touchAction: isMobile ? 'pan-y' : undefined,
     } as React.CSSProperties,
     backdropStyle: {
-      opacity: isMobile ? backdropOpacity : 1,
-      willChange: isMobile ? 'opacity' : undefined,
+      ...(isMobile ? { opacity: backdropOpacity, willChange: 'opacity' as const } : {}),
     } as React.CSSProperties,
+    drawerBackdropClass,
+    drawerPanelClass,
     handleProps: {
       onPointerDown: onHandleDown,
       onPointerMove,

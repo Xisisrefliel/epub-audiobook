@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { ActiveWord, Book, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
+import type { ActiveWord, Book, Bookmark, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
 import { ReaderScroll } from './ReaderScroll'
 import { ReaderPaginated } from './ReaderPaginated'
 
@@ -14,7 +14,9 @@ type Props = {
   currentSentenceId: string | null
   locationSentenceId: string | null
   activeWord: ActiveWord | null
+  bookmarkBySentenceId: Map<string, Bookmark>
   onSentenceSelect: (id: string | null) => void
+  onBookmarkToggle: (id: string, offset: number) => void
   onLocationChange: (id: string | null) => void
   onPaginationChange: (info: PaginationInfo | null) => void
   scrollRequest: ScrollRequest | null

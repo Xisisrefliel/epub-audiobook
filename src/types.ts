@@ -70,3 +70,10 @@ export type ActiveWord = {
 }
 
 export type CounterMode = 'chapter' | 'book'
+
+export type Bookmark = {
+  sentenceId: string
+  offset: number
+}
+
+export type BookmarkMap = Record<string, Bookmark[]>

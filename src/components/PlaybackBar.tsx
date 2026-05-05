@@ -1,5 +1,5 @@
 import type { PointerEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
@@ -43,7 +43,7 @@ export function PlaybackBar({
         <button
           type="button"
           onClick={onTogglePlay}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:w-10 dark:bg-zinc-100 dark:text-zinc-900"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:w-10 dark:bg-zinc-50 dark:text-zinc-950"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
@@ -61,7 +61,7 @@ export function PlaybackBar({
           <button
             type="button"
             onClick={onSync}
-            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:order-none dark:bg-zinc-100 dark:text-zinc-900 dark:hoverable:hover:bg-zinc-200"
+            className="order-2 shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:order-none dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
             aria-label="Sync to current sentence"
           >
             SYNC
@@ -69,7 +69,7 @@ export function PlaybackBar({
         )}
 
         {isBuffering && (
-          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-800/70 dark:text-zinc-400" aria-live="polite">
+          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-black dark:text-zinc-400" aria-live="polite">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
             Buffering
           </div>
@@ -98,10 +98,10 @@ function SpeedButtons({
   const activeIndex = Math.max(0, SPEEDS.indexOf(speed))
 
   return (
-    <div className="relative flex w-full shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] sm:w-auto dark:bg-zinc-800/70 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)]">
+    <div className="relative flex w-full shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] sm:w-auto dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
       <span
         aria-hidden="true"
-        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-700 dark:shadow-[0_1px_4px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.06)]"
+        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
         style={{ width: 'calc((100% - 4px) / 5)', transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
       />
       {SPEEDS.map((s) => {
@@ -143,20 +143,20 @@ function ReaderProgress({
   onToggleCounterMode: () => void
   onProgressSeek: (pct: number) => void
 }) {
+  const effectiveCounterMode = mode === 'scroll' ? 'book' : counterMode
   const progress =
     mode === 'paginated'
-      ? getPageProgress(paginationInfo, counterMode)
-      : getScrollProgress(scrollProgressInfo, counterMode)
+      ? getPageProgress(paginationInfo, effectiveCounterMode)
+      : getScrollProgress(scrollProgressInfo)
   const [dragPct, setDragPct] = useState<number | null>(null)
+  const progressContext = `${mode}-${effectiveCounterMode}`
+  const dragContextRef = useRef(progressContext)
   const frameRef = useRef(0)
   const latestPctRef = useRef(0)
   const lastLiveSeekRef = useRef(0)
-  const isDragging = dragPct !== null
+  const isDragging = dragPct !== null && dragContextRef.current === progressContext
   const displayPct = dragPct ?? progress.pct
-
-  useEffect(() => {
-    setDragPct(null)
-  }, [mode, counterMode])
+  const displayProgressPct = isDragging ? displayPct : progress.pct
 
   const pctFromPointer = (event: PointerEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -191,7 +191,7 @@ function ReaderProgress({
   return (
     <div
       data-dragging={isDragging || undefined}
-      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-zinc-800 dark:data-[dragging]:bg-zinc-800"
+      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-black dark:data-[dragging]:bg-black"
     >
       <button
         type="button"
@@ -202,6 +202,7 @@ function ReaderProgress({
           if (!progress.enabled) return
           event.currentTarget.setPointerCapture(event.pointerId)
           const pct = pctFromPointer(event)
+          dragContextRef.current = progressContext
           latestPctRef.current = pct
           lastLiveSeekRef.current = performance.now()
           setDragPct(pct * 100)
@@ -217,10 +218,10 @@ function ReaderProgress({
         }}
         onPointerCancel={() => setDragPct(null)}
       >
-        <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-zinc-800 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] dark:hoverable:group-hover/progress:bg-zinc-700 dark:group-data-[dragging]/progress:bg-zinc-700">
+        <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:group-hover/progress:bg-black dark:group-data-[dragging]/progress:bg-black">
           <span
             className={
-              'absolute inset-y-0 left-0 origin-left rounded-full bg-zinc-900 will-change-transform dark:bg-zinc-100 ' +
+              'absolute inset-y-0 left-0 origin-left rounded-full bg-zinc-900 will-change-transform dark:bg-zinc-50 ' +
               'shadow-[0_0_0_1px_rgba(255,255,255,0.22)_inset,0_0_14px_rgba(24,24,27,0.18)] ' +
               'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_0_18px_rgba(255,255,255,0.18)] ' +
               'group-data-[dragging]/progress:shadow-[0_0_0_1px_rgba(255,255,255,0.4)_inset,0_0_18px_rgba(24,24,27,0.28)] ' +
@@ -229,7 +230,7 @@ function ReaderProgress({
                 ? 'w-full'
                 : 'w-full transition-transform duration-200 ease-(--ease-out-strong)')
             }
-            style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayPct / 100))})` }}
+            style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayProgressPct / 100))})` }}
           />
           <span
             className={
@@ -240,19 +241,25 @@ function ReaderProgress({
               'hoverable:group-hover/progress:opacity-100 ' +
               (isDragging ? 'scale-110 opacity-100' : 'scale-[0.85]')
             }
-            style={{ left: `${displayPct}%` }}
+            style={{ left: `${displayProgressPct}%` }}
           />
         </span>
       </button>
       <button
         type="button"
-        onClick={onToggleCounterMode}
+        onClick={mode === 'paginated' ? onToggleCounterMode : undefined}
+        aria-label={mode === 'paginated' ? 'Toggle chapter / book progress' : 'Book progress'}
         disabled={!progress.enabled}
-        title={progress.enabled ? 'Toggle chapter / book progress' : undefined}
-        className="shrink-0 rounded-md px-1 py-1 text-[11px] tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.96] hoverable:hover:text-zinc-900 disabled:cursor-default disabled:active:scale-100 sm:px-1.5 sm:text-xs dark:text-zinc-400 dark:hoverable:hover:text-zinc-100"
+        title={progress.enabled && mode === 'paginated' ? 'Toggle chapter / book progress' : undefined}
+        className={
+          'shrink-0 rounded-md px-1 py-1 text-[11px] tabular-nums text-zinc-500 transition-[color,transform] duration-150 ease-(--ease-out-strong) disabled:cursor-default disabled:active:scale-100 sm:px-1.5 sm:text-xs dark:text-zinc-400 ' +
+          (mode === 'paginated'
+            ? 'active:scale-[0.96] hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-100'
+            : 'cursor-default')
+        }
       >
         <span
-          key={`${counterMode}-${progress.enabled}`}
+          key={`${effectiveCounterMode}-${progress.enabled}`}
           aria-live="polite"
           className="inline-block animate-(--animate-label-in)"
         >
@@ -275,19 +282,8 @@ function getPageProgress(paginationInfo: PaginationInfo | null, counterMode: Cou
   }
 }
 
-function getScrollProgress(scrollProgressInfo: ScrollProgressInfo | null, counterMode: CounterMode) {
+function getScrollProgress(scrollProgressInfo: ScrollProgressInfo | null) {
   if (!scrollProgressInfo) return { enabled: false, pct: 0, label: '—' }
-  if (counterMode === 'chapter') {
-    const current = scrollProgressInfo.chapterSentenceIndex + 1
-    const total = scrollProgressInfo.chapterSentenceTotal
-    const pct = total > 0 ? Math.round((current / total) * 100) : 0
-    return {
-      enabled: total > 0,
-      pct,
-      label: `Ch ${scrollProgressInfo.chapterIndex + 1} / ${scrollProgressInfo.chapterTotal} · ${pct}%`,
-    }
-  }
-
   const current = scrollProgressInfo.bookSentenceIndex + 1
   const total = scrollProgressInfo.bookSentenceTotal
   const pct = total > 0 ? Math.round((current / total) * 100) : 0

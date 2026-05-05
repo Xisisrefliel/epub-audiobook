@@ -16,6 +16,10 @@
   --animate-library-backdrop-out: library-backdrop-out 160ms ease-out both;
   --animate-library-panel-out: library-panel-out 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
   --animate-library-card-out: library-card-out 140ms ease-out both;
+  --animate-drawer-backdrop-in: drawer-backdrop-in 200ms ease-out both;
+  --animate-drawer-backdrop-out: drawer-backdrop-out 160ms ease-out both;
+  --animate-drawer-panel-in: drawer-panel-in 220ms var(--ease-drawer) both;
+  --animate-drawer-panel-out: drawer-panel-out 200ms var(--ease-drawer) both;
 }
 
 @keyframes library-backdrop-out {
@@ -65,6 +69,36 @@
   }
 }
 
+@keyframes drawer-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes drawer-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-panel-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -111,6 +145,7 @@ body,
 }
 
 html {
+  scrollbar-gutter: stable;
   background-color: #ffffff;
   color-scheme: light;
   -webkit-font-smoothing: antialiased;
@@ -129,11 +164,11 @@ body {
 
 @layer components {
   .surface-floating {
-    @apply rounded-2xl border border-zinc-200/80 bg-white/90 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/85 dark:shadow-black/30 dark:ring-white/[0.04];
+    @apply rounded-2xl border border-zinc-200/80 bg-white/90 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/40 dark:ring-white/[0.03];
   }
 
   .control-button {
-    @apply flex shrink-0 items-center justify-center rounded-full text-zinc-700 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) active:scale-[0.94] active:bg-zinc-100 hoverable:hover:bg-zinc-100/80 hoverable:hover:text-zinc-900 dark:text-zinc-200 dark:active:bg-zinc-800 dark:hoverable:hover:bg-zinc-800/80 dark:hoverable:hover:text-zinc-50;
+    @apply flex shrink-0 items-center justify-center rounded-full text-zinc-700 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) active:scale-[0.94] active:bg-zinc-100 hoverable:hover:bg-zinc-100/80 hoverable:hover:text-zinc-900 dark:text-zinc-200 dark:active:bg-zinc-900 dark:hoverable:hover:bg-zinc-900 dark:hoverable:hover:text-zinc-50;
   }
 }
 
@@ -185,7 +220,7 @@ body {
   transform: scale(1.12);
 }
 html.dark .range-input {
-  --range-track: #27272a;
+  --range-track: #18181b;
   --range-thumb: #fafafa;
 }
 

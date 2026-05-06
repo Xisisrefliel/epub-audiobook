@@ -48,8 +48,7 @@ export async function loadEpub(file: File): Promise<Book> {
 
     const chapterPath = normalizePath(joinPath(opfDir, manifestItem.href))
     const html = await readZipText(zip, chapterPath)
-    const doc = parser.parseFromString(html, 'application/xhtml+xml')
-    assertNoParserError(doc, chapterPath)
+    const doc = parseContentDocument(parser, html)
 
     const chapter = documentToChapter(doc, chapters.length, manifestItem.href)
     if (chapter.paragraphs.length > 0) {
@@ -130,10 +129,7 @@ async function readToc(
   if (navItem) {
     try {
       const navPath = normalizePath(joinPath(opfDir, navItem.href))
-      const navDoc = new DOMParser().parseFromString(
-        await readZipText(zip, navPath),
-        'application/xhtml+xml',
-      )
+      const navDoc = parseContentDocument(new DOMParser(), await readZipText(zip, navPath))
       const nav = navDoc.querySelector('nav[epub\\:type="toc"], nav[type="toc"], nav')
       const list = nav?.querySelector('ol,ul')
       if (list) {
@@ -225,7 +221,7 @@ function documentToChapter(doc: Document, chapterIndex: number, fallbackTitle: s
 
   blocks.forEach((el, paragraphIndex) => {
     if (isInsideAnotherBlock(el)) return
-    const text = el.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    const text = normalizeExtractedText(el.textContent ?? '')
     if (!text) return
 
     const sentences = splitSentences(text).map((sentence, sentenceIndex) => ({
@@ -239,7 +235,7 @@ function documentToChapter(doc: Document, chapterIndex: number, fallbackTitle: s
   })
 
   if (paragraphs.length === 0) {
-    const text = body?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    const text = normalizeExtractedText(body?.textContent ?? '')
     const sentences = splitSentences(text).map((sentence, sentenceIndex) => ({
       id: `c${chapterIndex}-p0-s${sentenceIndex}`,
       text: sentence,
@@ -256,9 +252,30 @@ async function readZipText(zip: JSZip, path: string) {
   return file.async('text')
 }
 
+function parseContentDocument(parser: DOMParser, html: string) {
+  const doc = parser.parseFromString(html, 'application/xhtml+xml')
+  return hasParserError(doc) ? parser.parseFromString(html, 'text/html') : doc
+}
+
 function assertNoParserError(doc: Document, label: string) {
-  const error = doc.querySelector('parsererror')
+  const error = getParserError(doc)
   if (error) throw new Error(`Could not parse ${label}: ${error.textContent ?? ''}`)
+}
+
+function hasParserError(doc: Document) {
+  return Boolean(getParserError(doc))
+}
+
+function getParserError(doc: Document) {
+  return doc.querySelector('parsererror')
+}
+
+function normalizeExtractedText(text: string) {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/([!?])(?=[\p{L}\p{N}])/gu, '$1 ')
+    .replace(/(?<![\d.])\.(?=(?!\.)[\p{Lu}\p{N}])/gu, '. ')
+    .trim()
 }
 
 function isDocumentMediaType(mediaType: string, href: string) {

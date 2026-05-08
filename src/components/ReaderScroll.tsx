@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Bookmark } from 'lucide-react'
 import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
@@ -10,6 +10,7 @@ const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 const LONG_PRESS_BOOKMARK_MS = 520
 const LONG_PRESS_FEEDBACK_MS = 140
 const LONG_PRESS_MOVE_THRESHOLD_PX = 10
+const LOCATION_SCROLL_UPDATE_MS = 120
 
 const findOffsetIndex = (values: number[], target: number) => {
   let lo = 0
@@ -187,21 +188,32 @@ export function ReaderScroll({
       return
     }
 
+    let frame = 0
+    let lastVisible: boolean | null = null
     const checkVisibility = () => {
+      frame = 0
       const spans = Array.from(articleRef.current?.querySelectorAll<HTMLElement>(`[data-sid="${currentSentenceId}"]`) ?? [])
       const visible = spans.some((span) => {
         const rect = span.getBoundingClientRect()
         return rect.bottom > 96 && rect.top < window.innerHeight - 140
       })
-      onCurrentSentenceVisibilityChange(visible)
+      if (visible !== lastVisible) {
+        lastVisible = visible
+        onCurrentSentenceVisibilityChange(visible)
+      }
+    }
+    const schedule = () => {
+      if (frame) return
+      frame = requestAnimationFrame(checkVisibility)
     }
 
-    checkVisibility()
-    window.addEventListener('scroll', checkVisibility, { passive: true })
-    window.addEventListener('resize', checkVisibility)
+    schedule()
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
     return () => {
-      window.removeEventListener('scroll', checkVisibility)
-      window.removeEventListener('resize', checkVisibility)
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
     }
   }, [currentSentenceId, lines, onCurrentSentenceVisibilityChange])
 
@@ -217,12 +229,57 @@ export function ReaderScroll({
     }
 
     const scrollToLineIndex = (index: number, behavior: ScrollBehavior = 'auto') => {
-      const top = articleDocTop() + (lineOffsets[index] ?? index * lineHeightPx) - window.innerHeight / 2
+      const top = articleDocTop() + (lineOffsets[index] ?? index * lineHeightPx) - window.innerHeight / 2 + lineHeightPx / 2
       window.scrollTo({ top: Math.max(0, top), behavior })
+    }
+
+    const centerMountedSentence = (id: string, behavior: ScrollBehavior, offset?: number) => {
+      const spans = Array.from(articleRef.current?.querySelectorAll<HTMLElement>(`[data-sid="${CSS.escape(id)}"]`) ?? [])
+      if (!spans.length) return false
+      const targets = offset === undefined
+        ? spans
+        : spans.filter((span) => {
+            const start = Number(span.dataset.sentenceOffset)
+            const end = Number(span.dataset.sentenceEnd)
+            return Number.isFinite(start) && Number.isFinite(end) && offset >= start && offset < end
+          })
+      const rects = (targets.length ? targets : spans).map((target) => target.getBoundingClientRect()).filter((rect) => rect.height > 0)
+      if (!rects.length) return false
+      const first = rects[0]
+      const last = rects.at(-1) ?? first
+      const center = (first.top + last.bottom) / 2
+      const chromeTop = Math.max(
+        0,
+        ...Array.from(document.querySelectorAll<HTMLElement>('[data-reader-chrome="top"]')).map((el) => el.getBoundingClientRect().bottom),
+      )
+      const chromeBottom = Math.min(
+        window.innerHeight,
+        ...Array.from(document.querySelectorAll<HTMLElement>('[data-reader-chrome="bottom"]')).map((el) => el.getBoundingClientRect().top),
+      )
+      const visibleTop = Math.min(chromeTop + 12, window.innerHeight / 2)
+      const visibleBottom = Math.max(chromeBottom - 12, visibleTop + 1)
+      const viewportCenter = (visibleTop + visibleBottom) / 2
+      window.scrollTo({ top: Math.max(0, window.scrollY + center - viewportCenter), behavior })
+      return true
     }
 
     if (scrollRequest.type === 'sentence') {
       const behavior = prefersReducedMotion() ? 'auto' : (scrollRequest.behavior ?? 'auto')
+      if (scrollRequest.align === 'center') {
+        if (centerMountedSentence(scrollRequest.id, behavior, scrollRequest.offset)) return
+        const index = sentenceLineIndex.get(scrollRequest.id)
+        if (index !== undefined) {
+          scrollToLineIndex(index, behavior)
+          let attempts = 0
+          const refine = () => {
+            attempts++
+            if (centerMountedSentence(scrollRequest.id, 'auto', scrollRequest.offset)) return
+            if (attempts < 8) requestAnimationFrame(refine)
+          }
+          requestAnimationFrame(refine)
+        }
+        return
+      }
       const target = articleRef.current?.querySelector(`[data-sid="${CSS.escape(scrollRequest.id)}"]`)
       if (target) {
         target.scrollIntoView({ behavior, block: 'center' })
@@ -247,9 +304,13 @@ export function ReaderScroll({
     if (!articleRef.current) return
     let frame = 0
     let lastId = locationSentenceId
+    let lastLocationCheck = 0
 
     const updateLocationFromViewport = () => {
       frame = 0
+      const now = performance.now()
+      if (now - lastLocationCheck < LOCATION_SCROLL_UPDATE_MS) return
+      lastLocationCheck = now
       const article = articleRef.current
       if (!article) return
       const probeY = Math.min(window.innerHeight - 120, Math.max(120, window.innerHeight * 0.42))
@@ -278,18 +339,28 @@ export function ReaderScroll({
     }
 
     schedule()
-    const updateViewport = () => setViewport({ y: window.scrollY, h: window.innerHeight })
+    let viewportFrame = 0
+    const updateViewport = () => {
+      viewportFrame = 0
+      const next = { y: window.scrollY, h: window.innerHeight }
+      setViewport((current) => (current.y === next.y && current.h === next.h ? current : next))
+    }
+    const scheduleViewport = () => {
+      if (viewportFrame) return
+      viewportFrame = requestAnimationFrame(updateViewport)
+    }
     window.addEventListener('scroll', schedule, { passive: true })
-    window.addEventListener('scroll', updateViewport, { passive: true })
+    window.addEventListener('scroll', scheduleViewport, { passive: true })
     window.addEventListener('resize', schedule)
-    window.addEventListener('resize', updateViewport)
+    window.addEventListener('resize', scheduleViewport)
     updateViewport()
     return () => {
       if (frame) cancelAnimationFrame(frame)
+      if (viewportFrame) cancelAnimationFrame(viewportFrame)
       window.removeEventListener('scroll', schedule)
-      window.removeEventListener('scroll', updateViewport)
+      window.removeEventListener('scroll', scheduleViewport)
       window.removeEventListener('resize', schedule)
-      window.removeEventListener('resize', updateViewport)
+      window.removeEventListener('resize', scheduleViewport)
     }
   }, [lines, locationSentenceId, onLocationChange])
 
@@ -363,10 +434,13 @@ export function ReaderScroll({
                 const isActive = part.id === currentSentenceId
                 const isBookmarked = bookmarkBySentenceId.has(part.id)
                 return (
-                  <span
-                    key={`${part.id}-${pi}`}
+                  <Fragment key={`${part.id}-${pi}`}>
+                    {part.leadingText ? <span aria-hidden="true">{part.leadingText.replace(/ /g, '\u00a0')}</span> : null}
+                    <span
                     ref={isActive ? activeRef : null}
                     data-sid={part.id}
+                    data-sentence-offset={part.sentenceOffset}
+                    data-sentence-end={part.sentenceOffset + part.text.length}
                     role="button"
                     tabIndex={0}
                     onClick={() => {
@@ -402,7 +476,6 @@ export function ReaderScroll({
                         : 'hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50')
                     }
                   >
-                    {pi > 0 ? ' ' : null}
                     <span
                       className={
                         'sentence-press-feedback rounded-sm box-decoration-clone ' +
@@ -413,7 +486,8 @@ export function ReaderScroll({
                     >
                       <HighlightedText part={part} activeWord={activeWord} />
                     </span>
-                  </span>
+                    </span>
+                  </Fragment>
                 )
               })}
               </div>

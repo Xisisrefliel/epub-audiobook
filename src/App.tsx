@@ -18,6 +18,9 @@ const STORAGE_PREFIX = 'audiobook-ui.'
 const PLAYBACK_SPEED_STORAGE_KEY = `${STORAGE_PREFIX}playbackSpeed`
 const BOOK_STORAGE_KEY = `${STORAGE_PREFIX}book`
 const LIBRARY_STORAGE_KEY = `${STORAGE_PREFIX}library`
+const LIBRARY_DB_NAME = 'audiobook-ui'
+const LIBRARY_DB_STORE = 'books'
+const LIBRARY_DB_KEY = 'library'
 const ACTIVE_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}activeBookId`
 const PROGRESS_STORAGE_KEY = `${STORAGE_PREFIX}progress`
 const PROGRESS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}progressByBook`
@@ -68,6 +71,37 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+function openLibraryDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(LIBRARY_DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(LIBRARY_DB_STORE)
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function readLibraryFromDb() {
+  if (!('indexedDB' in window)) return null
+  const db = await openLibraryDb()
+  return new Promise<Book[] | null>((resolve, reject) => {
+    const request = db.transaction(LIBRARY_DB_STORE, 'readonly').objectStore(LIBRARY_DB_STORE).get(LIBRARY_DB_KEY)
+    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : null)
+    request.onerror = () => reject(request.error)
+  }).finally(() => db.close())
+}
+
+async function writeLibraryToDb(library: Book[]) {
+  if (!('indexedDB' in window)) return
+  const db = await openLibraryDb()
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(LIBRARY_DB_STORE, 'readwrite').objectStore(LIBRARY_DB_STORE).put(library, LIBRARY_DB_KEY)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  }).finally(() => db.close())
+}
+
 function readStoredPlaybackSpeed(settings = readJson<StoredSettings>(SETTINGS_STORAGE_KEY)) {
   const value = Number(settings?.speed ?? window.localStorage.getItem(PLAYBACK_SPEED_STORAGE_KEY))
   return Number.isFinite(value) && value >= 0.5 && value <= 2 ? value : 1
@@ -95,17 +129,17 @@ function readProgressByBook() {
 function readBookmarksByBook() {
   const stored = readJson<Record<string, Array<string | Partial<Bookmark>>>>(BOOKMARKS_BY_BOOK_STORAGE_KEY) ?? {}
   return Object.fromEntries(
-    Object.entries(stored).map(([bookId, bookmarks]) => [
-      bookId,
-      bookmarks
-        .map((bookmark) => {
-          if (typeof bookmark === 'string') return { sentenceId: bookmark, offset: 0 }
-          return typeof bookmark.sentenceId === 'string'
-            ? { sentenceId: bookmark.sentenceId, offset: Math.max(0, Number(bookmark.offset) || 0) }
-            : null
-        })
-        .filter((bookmark): bookmark is Bookmark => bookmark !== null),
-    ]),
+    Object.entries(stored).map(([bookId, bookmarks]) => {
+      const normalized: Bookmark[] = []
+      for (const bookmark of bookmarks) {
+        if (typeof bookmark === 'string') {
+          normalized.push({ sentenceId: bookmark, offset: 0 })
+        } else if (typeof bookmark.sentenceId === 'string') {
+          normalized.push({ sentenceId: bookmark.sentenceId, offset: Math.max(0, Number(bookmark.offset) || 0) })
+        }
+      }
+      return [bookId, normalized]
+    }),
   )
 }
 
@@ -157,6 +191,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(() => readStoredPlaybackSpeed(storedSettings))
   const [library, setLibrary] = useState<Book[]>(readStoredLibrary)
+  const [hasLoadedLibraryDb, setHasLoadedLibraryDb] = useState(false)
   const [activeBookId, setActiveBookId] = useState(() => window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY) ?? library[0]?.id ?? sampleBook.id)
   const [book, setBook] = useState<Book>(() => library.find((candidate) => candidate.id === activeBookId) ?? library[0] ?? sampleBook)
   const initialProgress = progressByBook[book.id] ?? fallbackProgress
@@ -179,8 +214,8 @@ export default function App() {
 
   useTheme(theme)
 
-  const requestScrollToSentence = (id: string, behavior: ScrollBehavior = 'auto') => {
-    setScrollRequest({ key: ++scrollRequestKeyRef.current, type: 'sentence', id, behavior })
+  const requestScrollToSentence = (id: string, behavior: ScrollBehavior = 'auto', align: 'nearest' | 'center' = 'nearest', offset?: number) => {
+    setScrollRequest({ key: ++scrollRequestKeyRef.current, type: 'sentence', id, behavior, align, offset })
   }
 
   const requestScrollToChapter = (index: number) => {
@@ -226,25 +261,25 @@ export default function App() {
   }, [book.id, bookmarksByBook])
 
   const bookmarkMenuItems = useMemo<BookmarkMenuItem[]>(() => {
-    return (bookmarksByBook[book.id] ?? [])
-      .map((bookmark) => {
-        const meta = sentenceMeta.byId.get(bookmark.sentenceId)
-        const sentence = sentences[sentenceIndexById.get(bookmark.sentenceId) ?? -1]
-        if (!meta || !sentence) return null
-        const page = bookmarkPages[bookmark.sentenceId]
-        return {
-          id: bookmark.sentenceId,
-          sentence: sentence.text,
-          chapter: getChapterDisplayTitle(book, meta.chapterIndex),
-          pageLabel: page ? `Page ${page.pageIndex + 1}` : 'Page --',
-        }
+    const items: BookmarkMenuItem[] = []
+    for (const bookmark of bookmarksByBook[book.id] ?? []) {
+      const meta = sentenceMeta.byId.get(bookmark.sentenceId)
+      const sentence = sentences[sentenceIndexById.get(bookmark.sentenceId) ?? -1]
+      if (!meta || !sentence) continue
+      const page = bookmarkPages[bookmark.sentenceId]
+      items.push({
+        id: bookmark.sentenceId,
+        offset: bookmark.offset,
+        sentence: sentence.text,
+        chapter: getChapterDisplayTitle(book, meta.chapterIndex),
+        pageLabel: page ? `Page ${page.pageIndex + 1}` : 'Page --',
       })
-      .filter((item): item is BookmarkMenuItem => item !== null)
-      .sort((a, b) => {
-        const aMeta = sentenceMeta.byId.get(a.id)
-        const bMeta = sentenceMeta.byId.get(b.id)
-        return (aMeta?.bookSentenceIndex ?? 0) - (bMeta?.bookSentenceIndex ?? 0)
-      })
+    }
+    return items.toSorted((a, b) => {
+      const aMeta = sentenceMeta.byId.get(a.id)
+      const bMeta = sentenceMeta.byId.get(b.id)
+      return (aMeta?.bookSentenceIndex ?? 0) - (bMeta?.bookSentenceIndex ?? 0)
+    })
   }, [book, bookmarkPages, bookmarksByBook, sentenceIndexById, sentenceMeta, sentences])
 
   const scrollProgressInfo = useMemo<ScrollProgressInfo | null>(() => {
@@ -262,13 +297,15 @@ export default function App() {
   }, [book.chapters.length, chapter, currentSentenceId, locationSentenceId, sentenceMeta, sentences.length])
 
   useEffect(() => {
-    setChapterIndex((index) => Math.max(0, Math.min(book.chapters.length - 1, index)))
-    setCurrentSentenceId((id) =>
-      id && sentences.some((s) => s.id === id) ? id : null,
-    )
-    setLocationSentenceId((id) =>
-      id && sentences.some((s) => s.id === id) ? id : null,
-    )
+    queueMicrotask(() => {
+      setChapterIndex((index) => Math.max(0, Math.min(book.chapters.length - 1, index)))
+      setCurrentSentenceId((id) =>
+        id && sentences.some((s) => s.id === id) ? id : null,
+      )
+      setLocationSentenceId((id) =>
+        id && sentences.some((s) => s.id === id) ? id : null,
+      )
+    })
   }, [book.chapters.length, sentences])
 
   useEffect(() => {
@@ -287,8 +324,53 @@ export default function App() {
   }, [book.id, chapterIndex, currentSentenceId, locationSentenceId, counterMode])
 
   useEffect(() => {
-    writeJson(LIBRARY_STORAGE_KEY, library)
-  }, [library])
+    let cancelled = false
+    readLibraryFromDb()
+      .then((storedLibrary) => {
+        if (cancelled) return
+        const dbLibrary = storedLibrary?.filter((storedBook) => storedBook?.chapters?.length) ?? []
+        if (!dbLibrary.length) return
+        const nextLibrary = dbLibrary.some((storedBook) => storedBook.id === sampleBook.id)
+          ? dbLibrary
+          : [sampleBook, ...dbLibrary]
+        const storedActiveBookId = window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY)
+        const nextBook = nextLibrary.find((candidate) => candidate.id === storedActiveBookId) ?? nextLibrary[0] ?? sampleBook
+        const progress = readProgressByBook()[nextBook.id]
+        const nextChapterIndex = Math.max(0, Math.min(nextBook.chapters.length - 1, progress?.chapterIndex ?? 0))
+        const hasProgressLocation = progress?.locationSentenceId
+          ? nextBook.chapters.some((chapter) =>
+              chapter.paragraphs.some((paragraph) =>
+                paragraph.sentences.some((sentence) => sentence.id === progress.locationSentenceId),
+              ),
+            )
+          : false
+        const fallbackLocationId = nextBook.chapters[nextChapterIndex]?.paragraphs[0]?.sentences[0]?.id ?? null
+        setLibrary(nextLibrary)
+        setActiveBookId(nextBook.id)
+        setBook(nextBook)
+        setChapterIndex(nextChapterIndex)
+        setCurrentSentenceId(progress?.currentSentenceId ?? null)
+        setLocationSentenceId(hasProgressLocation ? progress?.locationSentenceId ?? null : fallbackLocationId)
+        setCounterMode(progress?.counterMode === 'book' ? 'book' : 'chapter')
+      })
+      .catch((error) => console.warn('Could not load library from browser database.', error))
+      .finally(() => {
+        if (!cancelled) setHasLoadedLibraryDb(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hasLoadedLibraryDb) return
+    void writeLibraryToDb(library).catch((error) => console.warn('Could not save library to browser database.', error))
+    try {
+      window.localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library.filter((storedBook) => storedBook.id === sampleBook.id)))
+    } catch {
+      // IndexedDB is the durable storage for uploaded EPUBs; localStorage is just a legacy fallback.
+    }
+  }, [hasLoadedLibraryDb, library])
 
   useEffect(() => {
     writeJson(BOOKMARKS_BY_BOOK_STORAGE_KEY, bookmarksByBook)
@@ -317,12 +399,12 @@ export default function App() {
     })
   }
 
-  const selectSentence = (id: string | null, options: { recordHistory?: boolean } = {}) => {
+  const selectSentence = (id: string | null, options: { recordHistory?: boolean; scrollOffset?: number } = {}) => {
     if (id && options.recordHistory) recordNavigationTarget(id)
     setCurrentSentenceId(id)
     if (!id) return
     setLocationSentenceId(id)
-    if (mode === 'scroll') requestScrollToSentence(id)
+    if (mode === 'scroll') requestScrollToSentence(id, 'auto', 'center', options.scrollOffset)
     const nextChapterIndex = book.chapters.findIndex((ch) =>
       ch.paragraphs.some((p) => p.sentences.some((s) => s.id === id)),
     )
@@ -341,10 +423,10 @@ export default function App() {
     }
   }
 
-  const selectBookmark = (id: string) => {
+  const selectBookmark = (id: string, offset?: number) => {
     const meta = sentenceMeta.byId.get(id)
     if (meta) setChapterIndex(meta.chapterIndex)
-    selectSentence(id, { recordHistory: true })
+    selectSentence(id, { recordHistory: true, scrollOffset: offset })
   }
 
   const updateBookmarkPages = useCallback((pages: Record<string, BookmarkPageInfo>) => {
@@ -421,7 +503,7 @@ export default function App() {
     setChapterIndex(meta.chapterIndex)
     setCurrentSentenceId(previous.sentenceId)
     setLocationSentenceId(previous.sentenceId)
-    if (mode === 'scroll') requestScrollToSentence(previous.sentenceId)
+    if (mode === 'scroll') requestScrollToSentence(previous.sentenceId, 'auto', 'center')
   }
 
   const syncToCurrentSentence = () => {
@@ -430,7 +512,7 @@ export default function App() {
     if (meta) setChapterIndex(meta.chapterIndex)
     setLocationSentenceId(currentSentenceId)
     setSyncKey((key) => key + 1)
-    if (mode === 'scroll') requestScrollToSentence(currentSentenceId)
+    if (mode === 'scroll') requestScrollToSentence(currentSentenceId, 'auto', 'center')
   }
 
   const seekToProgress = (pct: number) => {
@@ -459,7 +541,7 @@ export default function App() {
   useEffect(() => {
     if (mode !== 'scroll') return
     const anchor = currentSentenceId ?? locationSentenceId
-    if (anchor) requestScrollToSentence(anchor)
+    if (anchor) requestScrollToSentence(anchor, 'auto', 'center')
     else requestScrollToChapter(chapterIndex)
   }, [mode])
 
@@ -720,8 +802,6 @@ export default function App() {
           if (isPlaying) stopPlayback()
           else startPlayback()
         }}
-        speed={speed}
-        onSpeedChange={setSpeed}
         isBuffering={isBuffering}
         canGoBack={navigationHistory.index > 0}
         onGoBack={goBackInNavigationHistory}
@@ -773,6 +853,8 @@ export default function App() {
         onThemeChange={setTheme}
         mode={mode}
         onModeChange={setMode}
+        speed={speed}
+        onSpeedChange={setSpeed}
       />
     </div>
   )

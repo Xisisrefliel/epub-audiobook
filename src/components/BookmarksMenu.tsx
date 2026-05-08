@@ -3,6 +3,7 @@ import { useBottomSheetDrag } from '../hooks/useBottomSheetDrag'
 
 export type BookmarkMenuItem = {
   id: string
+  offset: number
   sentence: string
   chapter: string
   pageLabel: string
@@ -13,7 +14,7 @@ type Props = {
   bookTitle: string
   items: BookmarkMenuItem[]
   onClose: () => void
-  onSelectBookmark: (sentenceId: string) => void
+  onSelectBookmark: (sentenceId: string, offset: number) => void
 }
 
 export function BookmarksMenu({
@@ -89,7 +90,7 @@ export function BookmarksMenu({
             type="button"
             onClick={onClose}
             aria-label="Close bookmarks"
-            className="control-button h-9 w-9"
+            className="control-button size-9"
           >
             <X className="h-4 w-4" strokeWidth={2} />
           </button>
@@ -97,7 +98,7 @@ export function BookmarksMenu({
 
         <div
           ref={sheetRef as React.RefObject<HTMLDivElement>}
-          className="flex-1 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="flex-1 overflow-y-auto p-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           {items.length > 0 ? (
             <ol className="space-y-2">
@@ -106,16 +107,16 @@ export function BookmarksMenu({
                   <button
                     type="button"
                     onClick={() => {
-                      onSelectBookmark(item.id)
+                      onSelectBookmark(item.id, item.offset)
                       onClose()
                     }}
-                    className="group w-full rounded-2xl border border-transparent px-3 py-3 text-left transition-[background-color,border-color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.99] hoverable:hover:border-zinc-200 hoverable:hover:bg-zinc-50 dark:hoverable:hover:border-zinc-800 dark:hoverable:hover:bg-zinc-900/70"
+                    className="group w-full rounded-2xl border border-transparent p-3 text-left transition-[background-color,border-color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.99] hoverable:hover:border-zinc-200 hoverable:hover:bg-zinc-50 dark:hoverable:hover:border-zinc-800 dark:hoverable:hover:bg-zinc-900/70"
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500 dark:text-zinc-500">
                         {item.chapter}
                       </span>
-                      <span className="shrink-0 rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-zinc-950 dark:bg-amber-400/20 dark:text-zinc-50">
+                      <span className="shrink-0 rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-amber-950 dark:bg-amber-400/20 dark:text-zinc-50">
                         {item.pageLabel}
                       </span>
                     </div>

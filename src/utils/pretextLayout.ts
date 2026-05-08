@@ -8,16 +8,22 @@ import {
 import type { Paragraph } from '../types'
 
 export type SentenceRange = { id: string; start: number; end: number }
-export type TextPart = { id: string; text: string; sentenceOffset: number; sentenceText: string }
+export type TextPart = { id: string; text: string; sentenceOffset: number; sentenceText: string; leadingText: string }
 
 const preparedParagraphCache = new WeakMap<Paragraph, Map<string, PreparedTextWithSegments>>()
 const paragraphTextCache = new WeakMap<Paragraph, string>()
 const sentenceRangesCache = new WeakMap<Paragraph, SentenceRange[]>()
 
+function normalizeDisplaySentenceText(text: string) {
+  return text
+    .replace(/([!?])(?=[^\s.!?])/gu, '$1 ')
+    .replace(/\.(?=(?!\d)[^\s.!?])/gu, '. ')
+}
+
 export function getParagraphText(para: Paragraph) {
   const cached = paragraphTextCache.get(para)
   if (cached !== undefined) return cached
-  const text = para.sentences.map((s) => s.text).join(' ')
+  const text = para.sentences.map((s) => normalizeDisplaySentenceText(s.text)).join(' ')
   paragraphTextCache.set(para, text)
   return text
 }
@@ -28,8 +34,9 @@ export function getSentenceRanges(para: Paragraph) {
   const ranges: SentenceRange[] = []
   let cursor = 0
   for (const sentence of para.sentences) {
+    const sentenceText = normalizeDisplaySentenceText(sentence.text)
     const start = cursor
-    const end = start + sentence.text.length
+    const end = start + sentenceText.length
     ranges.push({ id: sentence.id, start, end })
     cursor = end + 1
   }
@@ -75,17 +82,21 @@ export function walkParagraphLineParts(
     const lineText = materializeLineRange(prepared, lineRange).text
     const lineStart = offset
     const lineEnd = lineStart + lineText.length
+    let previousPartEnd = lineStart
     const parts = ranges
       .map((range) => {
         const start = Math.max(lineStart, range.start)
         const end = Math.min(lineEnd, range.end)
         if (start >= end) return null
         const sentenceText = text.slice(range.start, range.end)
+        const leadingText = text.slice(previousPartEnd, start)
+        previousPartEnd = end
         return {
           id: range.id,
           text: text.slice(start, end),
           sentenceOffset: start - range.start,
           sentenceText,
+          leadingText,
         }
       })
       .filter((part): part is TextPart => part !== null)

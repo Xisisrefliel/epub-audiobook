@@ -15,6 +15,8 @@ type Props = {
   onThemeChange: (theme: Theme) => void
   mode: ReaderMode
   onModeChange: (mode: ReaderMode) => void
+  speed: number
+  onSpeedChange: (speed: number) => void
 }
 
 export function ReaderSettings({
@@ -30,6 +32,8 @@ export function ReaderSettings({
   onThemeChange,
   mode,
   onModeChange,
+  speed,
+  onSpeedChange,
 }: Props) {
   const {
     shouldRender,
@@ -47,7 +51,6 @@ export function ReaderSettings({
   return (
     <div
       className="fixed inset-0 z-40 flex touch-none items-end justify-end overscroll-contain sm:items-stretch"
-      onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
@@ -57,6 +60,7 @@ export function ReaderSettings({
           .join(' ')}
         aria-hidden
         style={backdropStyle}
+        onClick={onClose}
       />
       <div
         aria-hidden
@@ -65,7 +69,6 @@ export function ReaderSettings({
       />
       <aside
         ref={sheetRef}
-        onClick={(e) => e.stopPropagation()}
         style={sheetStyle}
         {...sheetProps}
         className={[
@@ -94,7 +97,7 @@ export function ReaderSettings({
           <button
             type="button"
             onClick={onClose}
-            className="control-button h-9 w-9"
+            className="control-button size-9"
             aria-label="Close settings"
           >
             <X className="h-4 w-4" strokeWidth={2} />
@@ -122,6 +125,20 @@ export function ReaderSettings({
               ]}
               value={theme}
               onChange={(v) => onThemeChange(v as Theme)}
+            />
+          </Group>
+
+          <Group label="Playback speed">
+            <Segmented
+              options={[
+                { value: '0.5', label: '0.5×' },
+                { value: '1', label: '1×' },
+                { value: '1.25', label: '1.25×' },
+                { value: '1.5', label: '1.5×' },
+                { value: '2', label: '2×' },
+              ]}
+              value={String(speed)}
+              onChange={(v) => onSpeedChange(Number(v))}
             />
           </Group>
 
@@ -229,10 +246,10 @@ function Segmented({
 }) {
   const activeIndex = Math.max(0, options.findIndex((o) => o.value === value))
   return (
-    <div className="relative flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-black">
+    <div className="relative flex rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-950">
       <span
         aria-hidden
-        className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+        className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
         style={{
           width: `calc((100% - 4px) / ${options.length})`,
           transform: `translate3d(${activeIndex * 100}%, 0, 0)`,

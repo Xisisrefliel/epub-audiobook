@@ -1,7 +1,10 @@
 export function splitSentences(text: string): string[] {
   const normalized = text
     .replace(/\s+/g, ' ')
-    .replace(/([.!?])(?=[\p{Lu}\p{N}"“‘])/gu, '$1 ')
+    // Some EPUBs collapse sentence boundaries (e.g. "Hello.World"). Add a
+    // missing space after sentence-ending punctuation while avoiding decimals.
+    .replace(/([!?])(?=[^\s.!?])/gu, '$1 ')
+    .replace(/\.(?=(?!\d)[^\s.!?])/gu, '. ')
     .trim()
   if (!normalized) return []
 

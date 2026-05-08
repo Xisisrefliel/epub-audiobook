@@ -29,12 +29,14 @@ export function BookLibrary({
 
   useEffect(() => {
     if (open) {
-      setMounted(true)
-      setClosing(false)
+      queueMicrotask(() => {
+        setMounted(true)
+        setClosing(false)
+      })
       return
     }
     if (!mounted) return
-    setClosing(true)
+    queueMicrotask(() => setClosing(true))
     const t = setTimeout(() => {
       setMounted(false)
       setClosing(false)

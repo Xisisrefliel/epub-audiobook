@@ -15,7 +15,7 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
 
   useLayoutEffect(() => {
     if (!activeKey) {
-      setRect(null)
+      queueMicrotask(() => setRect(null))
       return
     }
 
@@ -29,12 +29,18 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
         return
       }
       const articleRect = article.getBoundingClientRect()
-      const targetRect = target.getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(target)
+      const textRects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+      range.detach()
+      const targetRect = textRects[0] ?? target.getBoundingClientRect()
+      const fontSize = Number.parseFloat(window.getComputedStyle(target).fontSize) || targetRect.height
+      const verticalInset = fontSize * 0.08
       setRect({
-        top: targetRect.top - articleRect.top,
+        top: targetRect.top - articleRect.top + verticalInset,
         left: targetRect.left - articleRect.left,
         width: targetRect.width,
-        height: targetRect.height,
+        height: Math.min(fontSize * 1.18, Math.max(fontSize, targetRect.height - verticalInset * 2)),
       })
     }
 
@@ -52,7 +58,7 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
     <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
       {rect && (
         <div
-          className="absolute rounded-[0.22em] bg-zinc-900/10 shadow-[0_0_0_1px_rgba(24,24,27,0.03)] dark:bg-zinc-100/15 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
+          className="absolute rounded-[0.22em] bg-zinc-950/14 shadow-[0_0_0_1px_rgba(24,24,27,0.08)_inset] dark:bg-white/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset]"
           style={{
             transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
             width: rect.width,

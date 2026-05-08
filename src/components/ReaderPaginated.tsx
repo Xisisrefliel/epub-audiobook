@@ -686,23 +686,22 @@ export function ReaderPaginated({
                         className={
                           "inline-block cursor-pointer select-none rounded-sm py-1.5 box-decoration-clone transition-[background-color,color] duration-300 ease-(--ease-out-strong) hoverable:select-text " +
                           (isBookmarked && !isActive
-                            ? "text-rose-950 dark:text-rose-100 "
+                            ? "text-rose-900 dark:text-rose-100 "
                             : "") +
                           (isActive
                             ? "text-zinc-900 dark:text-zinc-50"
                             : "hoverable:hover:text-zinc-900 dark:hoverable:hover:text-zinc-50")
                         }
                       >
-                        {pi > 0 ? " " : null}
+                        {part.leadingText.replace(/ /g, "\u00a0")}
                         <span
                           className={
                             "sentence-press-feedback rounded-sm box-decoration-clone " +
                             (pi === 0 ? "sentence-line-start " : "") +
-                            (isBookmarked ? "bookmark-text-highlight " : "") +
-                            (isActive && isBookmarked ? "active-bookmark-cue" : "")
+                            ""
                           }
                         >
-                          <HighlightedText part={part} activeWord={activeWord} />
+                          <HighlightedText part={part} activeWord={activeWord} isBookmarked={isBookmarked} isActive={isActive} />
                         </span>
                       </span>
                     );
@@ -829,25 +828,44 @@ function setPressFeedback(sentenceId: string, pressing: boolean) {
 function HighlightedText({
   part,
   activeWord,
+  isBookmarked,
+  isActive,
 }: {
   part: TextPart;
   activeWord: ActiveWord | null;
+  isBookmarked: boolean;
+  isActive: boolean;
 }) {
   const match =
     activeWord?.sentenceId === part.id
       ? findActiveWordMatch(part, activeWord)
       : null;
-  if (!match) return part.text;
+  if (!match) return renderBookmarkText(part.text, isBookmarked, isActive);
   return (
     <>
-      {part.text.slice(0, match.start)}
+      {renderBookmarkText(part.text.slice(0, match.start), isBookmarked, isActive)}
       <mark
         data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? "pause" : "word"}`}
-        className="rounded-[0.2em] bg-transparent px-0.5 text-inherit"
+        className={(isBookmarked ? "bookmark-text-highlight " : "") + (isBookmarked && isActive ? "active-bookmark-cue " : "") + "rounded-[0.2em] bg-transparent px-0.5 text-inherit"}
       >
         {part.text.slice(match.start, match.end)}
       </mark>
-      {part.text.slice(match.end)}
+      {renderBookmarkText(part.text.slice(match.end), isBookmarked, isActive)}
+    </>
+  );
+}
+
+function renderBookmarkText(text: string, isBookmarked: boolean, isActive: boolean) {
+  if (!isBookmarked) return text;
+  const leading = text.match(/^\s*/u)?.[0] ?? "";
+  const trailing = text.match(/\s*$/u)?.[0] ?? "";
+  const content = text.slice(leading.length, text.length - trailing.length);
+  if (!content) return text;
+  return (
+    <>
+      {leading}
+      <span className={(isActive ? "active-bookmark-cue " : "") + "bookmark-text-highlight rounded-sm box-decoration-clone"}>{content}</span>
+      {trailing}
     </>
   );
 }
@@ -866,7 +884,7 @@ function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
   if (activeWord.isPunctuationPause) {
     const trailing = part.sentenceText
       .slice(sentenceMatch.index + sentenceMatch[0].length)
-      .match(/^[\s,;:–—-]+/u);
+      .match(/^[,;:–—-]+/u);
     end += trailing?.[0]?.length ?? 0;
   }
   if (end <= 0 || start >= part.text.length) return null;
@@ -1169,19 +1187,24 @@ function PageNav({
   chapterTotal: number;
 }) {
   return (
-    <div data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-[8rem] z-20 px-2 sm:bottom-24 sm:px-4">
-      <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 px-2.5 py-2 sm:gap-3 sm:px-3">
+    <div
+      data-reader-chrome="bottom"
+      data-page-nav="true"
+      className="pointer-events-none fixed inset-x-0 z-40 px-3 sm:px-4"
+      style={{ bottom: 'calc(var(--playback-bar-height, 5.5rem) + 0.5rem)' }}
+    >
+      <div className="surface-floating pointer-events-auto mx-auto flex max-w-sm items-center gap-1.5 px-1.5 py-1 sm:max-w-3xl sm:gap-3 sm:px-3 sm:py-2">
         <button
           type="button"
           onClick={onPrev}
           aria-label="Previous page"
-          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-100 px-3 text-sm font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-black dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:flex-none sm:px-4"
+          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-100 px-2 text-xs font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-black dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm"
         >
-          <ChevronLeft className="h-4 w-4" strokeWidth={2.25} />
+          <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
           Prev
         </button>
 
-        <div className="flex h-10 min-w-14 shrink-0 items-center justify-center px-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400 sm:flex-1">
+        <div className="flex h-8 min-w-12 shrink-0 items-center justify-center px-1.5 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400 sm:h-10 sm:min-w-14 sm:flex-1 sm:px-2 sm:text-xs">
           {chapterTotal > 0
             ? `${Math.min(pageIndex + 1, chapterTotal)} / ${chapterTotal}`
             : "—"}
@@ -1191,10 +1214,10 @@ function PageNav({
           type="button"
           onClick={onNext}
           aria-label="Next page"
-          className="flex h-10 flex-1 items-center justify-center gap-1 rounded-full bg-zinc-900 px-3 text-sm font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:flex-none sm:px-4 dark:bg-zinc-50 dark:text-zinc-950"
+          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-900 px-2 text-xs font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm dark:bg-zinc-50 dark:text-zinc-950"
         >
           Next
-          <ChevronRight className="h-4 w-4" strokeWidth={2.25} />
+          <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
         </button>
       </div>
     </div>

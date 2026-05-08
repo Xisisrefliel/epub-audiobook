@@ -63,7 +63,7 @@ export type ScrollProgressInfo = {
 }
 
 export type ScrollRequest =
-  | { key: number; type: 'sentence'; id: string; behavior?: ScrollBehavior }
+  | { key: number; type: 'sentence'; id: string; behavior?: ScrollBehavior; align?: 'nearest' | 'center'; offset?: number }
   | { key: number; type: 'chapter'; chapterIndex: number }
 
 export type ActiveWord = {

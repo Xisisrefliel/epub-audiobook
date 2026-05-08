@@ -1,13 +1,11 @@
 import type { PointerEvent } from 'react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CornerUpLeft, Pause, Play } from 'lucide-react'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
 type Props = {
   isPlaying: boolean
   onTogglePlay: () => void
-  speed: number
-  onSpeedChange: (speed: number) => void
   isBuffering: boolean
   canGoBack: boolean
   onGoBack: () => void
@@ -21,14 +19,11 @@ type Props = {
   onProgressSeek: (pct: number) => void
 }
 
-const SPEEDS = [0.5, 1, 1.25, 1.5, 2]
 const LIVE_SEEK_INTERVAL_MS = 90
 
 export function PlaybackBar({
   isPlaying,
   onTogglePlay,
-  speed,
-  onSpeedChange,
   isBuffering,
   canGoBack,
   onGoBack,
@@ -41,35 +36,63 @@ export function PlaybackBar({
   onToggleCounterMode,
   onProgressSeek,
 }: Props) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    const root = document.documentElement
+    const update = () => {
+      const h = el.getBoundingClientRect().height
+      root.style.setProperty('--playback-bar-height', `${Math.ceil(h)}px`)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--playback-bar-height')
+    }
+  }, [])
+
   return (
-    <div data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
-      <div className="surface-floating pointer-events-auto mx-auto grid max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-2 px-2.5 py-2 sm:flex sm:gap-3 sm:px-3">
-        <button
-          type="button"
-          onClick={onTogglePlay}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:w-10 dark:bg-zinc-50 dark:text-zinc-950"
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-        >
-          {isPlaying ? (
-            <Pause className="h-[18px] w-[18px]" fill="currentColor" strokeWidth={0} />
-          ) : (
-            <Play className="h-[18px] w-[18px] translate-x-[1px]" fill="currentColor" strokeWidth={0} />
+    <div ref={wrapperRef} data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
+      <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl flex-col gap-1.5 px-2.5 py-2 sm:flex-row sm:items-center sm:gap-3 sm:px-3">
+        <div className="flex items-center gap-2 sm:contents">
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950"
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? (
+              <Pause className="size-[18px]" fill="currentColor" strokeWidth={0} />
+            ) : (
+              <Play className="size-[18px] translate-x-[1px]" fill="currentColor" strokeWidth={0} />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onGoBack}
+            disabled={!canGoBack}
+            className="control-button size-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
+            aria-label="Go back to previous reading location"
+            title="Go back"
+          >
+            <CornerUpLeft className="size-[18px]" strokeWidth={2} />
+          </button>
+
+          {canSync && (
+            <button
+              type="button"
+              onClick={onSync}
+              className="ml-auto h-9 rounded-full border border-zinc-200/80 px-3 text-[10px] font-semibold tracking-[0.12em] text-zinc-800 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] sm:hidden dark:border-zinc-800 dark:text-zinc-100"
+              aria-label="Sync to current sentence"
+            >
+              SYNC
+            </button>
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={onGoBack}
-          disabled={!canGoBack}
-          className="control-button h-10 w-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
-          aria-label="Go back to previous reading location"
-          title="Go back"
-        >
-          <CornerUpLeft className="h-[18px] w-[18px]" strokeWidth={2} />
-        </button>
-
-        <div className="order-3 col-span-3 sm:order-none sm:col-span-1">
-          <SpeedButtons speed={speed} onSpeedChange={onSpeedChange} />
         </div>
 
         {canSync && (
@@ -84,65 +107,22 @@ export function PlaybackBar({
         )}
 
         {isBuffering && (
-          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-black dark:text-zinc-400" aria-live="polite">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
+          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-900 dark:text-zinc-400" aria-live="polite">
+            <span className="size-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
             Buffering
           </div>
         )}
 
-        <div className="col-span-2 min-w-0 sm:contents">
-          <ReaderProgress
-            mode={mode}
-            paginationInfo={paginationInfo}
-            scrollProgressInfo={scrollProgressInfo}
-            counterMode={counterMode}
-            onToggleCounterMode={onToggleCounterMode}
-            onProgressSeek={onProgressSeek}
-            canSync={canSync}
-            onSync={onSync}
-          />
-        </div>
+        <ReaderProgress
+          mode={mode}
+          paginationInfo={paginationInfo}
+          scrollProgressInfo={scrollProgressInfo}
+          counterMode={counterMode}
+          onToggleCounterMode={onToggleCounterMode}
+          onProgressSeek={onProgressSeek}
+          className="order-2 sm:order-none"
+        />
       </div>
-    </div>
-  )
-}
-
-function SpeedButtons({
-  speed,
-  onSpeedChange,
-}: {
-  speed: number
-  onSpeedChange: (speed: number) => void
-}) {
-  const activeIndex = Math.max(0, SPEEDS.indexOf(speed))
-
-  return (
-    <div className="relative flex w-full shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] sm:w-auto dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-      <span
-        aria-hidden="true"
-        className="absolute left-0.5 top-0.5 h-8 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
-        style={{ width: 'calc((100% - 4px) / 5)', transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
-      />
-      {SPEEDS.map((s) => {
-        const active = s === speed
-        return (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onSpeedChange(s)}
-            className={
-              'relative z-10 h-8 flex-1 rounded-full text-[11px] font-medium tabular-nums transition-[color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:w-9 ' +
-              (active
-                ? 'text-zinc-900 dark:text-zinc-50'
-                : 'text-zinc-500 hoverable:hover:text-zinc-900 dark:text-zinc-400 dark:hoverable:hover:text-zinc-100')
-            }
-            aria-pressed={active}
-            aria-label={`Playback speed ${s}×`}
-          >
-            {s}×
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -154,8 +134,7 @@ function ReaderProgress({
   counterMode,
   onToggleCounterMode,
   onProgressSeek,
-  canSync,
-  onSync,
+  className = '',
 }: {
   mode: ReaderMode
   paginationInfo: PaginationInfo | null
@@ -163,8 +142,7 @@ function ReaderProgress({
   counterMode: CounterMode
   onToggleCounterMode: () => void
   onProgressSeek: (pct: number) => void
-  canSync: boolean
-  onSync: () => void
+  className?: string
 }) {
   const effectiveCounterMode = mode === 'scroll' ? 'book' : counterMode
   const progress =
@@ -214,19 +192,9 @@ function ReaderProgress({
   return (
     <div
       data-dragging={isDragging || undefined}
-      className="group/progress col-span-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:col-span-1 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-black dark:data-[dragging]:bg-black"
+      className={`group/progress flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 transition-colors duration-150 ease-(--ease-out-strong) hoverable:hover:bg-zinc-100 data-[dragging]:bg-zinc-100 sm:gap-3 sm:px-2 dark:hoverable:hover:bg-zinc-900 dark:data-[dragging]:bg-zinc-900 ${className}`}
     >
       <div className="relative flex min-w-0 flex-1">
-        {canSync && (
-          <button
-            type="button"
-            onClick={onSync}
-            className="absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[72%] rounded-full border border-zinc-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-zinc-900 shadow-lg shadow-zinc-900/10 transition-[transform,background-color,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-50 sm:hidden dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:shadow-black/40 dark:hoverable:hover:bg-zinc-900"
-            aria-label="Sync to current sentence"
-          >
-            SYNC
-          </button>
-        )}
         <button
           type="button"
           disabled={!progress.enabled}
@@ -252,7 +220,7 @@ function ReaderProgress({
           }}
           onPointerCancel={() => setDragPct(null)}
         >
-          <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-black dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:group-hover/progress:bg-black dark:group-data-[dragging]/progress:bg-black">
+          <span className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 shadow-[inset_0_1px_1px_rgba(0,0,0,0.06)] transition-[height,background-color] duration-200 ease-(--ease-out-strong) hoverable:group-hover/progress:h-2 hoverable:group-hover/progress:bg-zinc-300/70 group-data-[dragging]/progress:h-2.5 group-data-[dragging]/progress:bg-zinc-300/80 dark:bg-zinc-950 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:group-hover/progress:bg-zinc-950 dark:group-data-[dragging]/progress:bg-zinc-950">
           <span
             className={
               'absolute inset-y-0 left-0 origin-left rounded-full bg-zinc-900 will-change-transform dark:bg-zinc-50 ' +

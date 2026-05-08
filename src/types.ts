@@ -33,14 +33,6 @@ export type Book = {
   coverUrl?: string
 }
 
-export type ReaderSettings = {
-  fontSize: number
-  lineHeight: number
-  measure: number
-  theme: Theme
-  mode: ReaderMode
-}
-
 export type PaginationInfo = {
   pageIndex: number
   totalPages: number

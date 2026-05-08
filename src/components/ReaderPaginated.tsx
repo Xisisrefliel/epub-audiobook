@@ -3,8 +3,8 @@ import {
   useEffectEvent,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
-  useState,
   type PointerEvent,
 } from "react";
 import { Bookmark, ChevronLeft, ChevronRight } from "lucide-react";
@@ -52,6 +52,42 @@ type Page = {
   firstSentenceId: string | null;
 };
 
+type ReaderViewport = { top: number; bottom: number; height: number };
+type ReaderUiState = {
+  containerWidth: number;
+  readableViewport: ReaderViewport;
+  isMobile: boolean;
+  pageIndex: number;
+  hoveredBookmarkTarget: BookmarkTarget | null;
+};
+type ReaderUiAction =
+  | { type: "container-width"; width: number }
+  | { type: "readable-viewport"; viewport: ReaderViewport }
+  | { type: "is-mobile"; isMobile: boolean }
+  | { type: "page-index"; pageIndex: number | ((current: number) => number) }
+  | { type: "hovered-bookmark-target"; target: BookmarkTarget | null };
+
+function readerUiReducer(state: ReaderUiState, action: ReaderUiAction): ReaderUiState {
+  switch (action.type) {
+    case "container-width":
+      return state.containerWidth === action.width ? state : { ...state, containerWidth: action.width };
+    case "readable-viewport":
+      return state.readableViewport.top === action.viewport.top &&
+        state.readableViewport.bottom === action.viewport.bottom &&
+        state.readableViewport.height === action.viewport.height
+        ? state
+        : { ...state, readableViewport: action.viewport };
+    case "is-mobile":
+      return state.isMobile === action.isMobile ? state : { ...state, isMobile: action.isMobile };
+    case "page-index": {
+      const pageIndex = typeof action.pageIndex === "function" ? action.pageIndex(state.pageIndex) : action.pageIndex;
+      return state.pageIndex === pageIndex ? state : { ...state, pageIndex };
+    }
+    case "hovered-bookmark-target":
+      return state.hoveredBookmarkTarget === action.target ? state : { ...state, hoveredBookmarkTarget: action.target };
+  }
+}
+
 type Props = {
   book: Book;
   chapterIndex: number;
@@ -94,19 +130,17 @@ export function ReaderPaginated({
   const chapter = book.chapters[chapterIndex];
   const containerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [readableViewport, setReadableViewport] = useState({
-    top: 96,
-    bottom: 220,
-    height: 360,
-  });
-  const [isMobile, setIsMobile] = useState(
-    () =>
-      typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT_PX,
+  const [{ containerWidth, readableViewport, isMobile, pageIndex, hoveredBookmarkTarget }, dispatchUi] = useReducer(
+    readerUiReducer,
+    undefined,
+    (): ReaderUiState => ({
+      containerWidth: 0,
+      readableViewport: { top: 96, bottom: 220, height: 360 },
+      isMobile: typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT_PX,
+      pageIndex: 0,
+      hoveredBookmarkTarget: null,
+    }),
   );
-  const [pageIndex, setPageIndex] = useState(0);
-  const [hoveredBookmarkTarget, setHoveredBookmarkTarget] =
-    useState<BookmarkTarget | null>(null);
   const chapterIndexBySentenceId = useMemo(() => {
     const map = new Map<string, number>();
     book.chapters.forEach((bookChapter, index) => {
@@ -137,7 +171,7 @@ export function ReaderPaginated({
     const update = () => {
       const cs = window.getComputedStyle(el);
       const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-      setContainerWidth(Math.max(0, el.clientWidth - padX));
+      dispatchUi({ type: "container-width", width: Math.max(0, el.clientWidth - padX) });
     };
     update();
     const ro = new ResizeObserver(update);
@@ -148,7 +182,7 @@ export function ReaderPaginated({
   useLayoutEffect(() => {
     const update = () => {
       const mobile = window.innerWidth < MOBILE_BREAKPOINT_PX;
-      setIsMobile(mobile);
+      dispatchUi({ type: "is-mobile", isMobile: mobile });
     };
     update();
     window.addEventListener("resize", update);
@@ -182,11 +216,7 @@ export function ReaderPaginated({
         Math.floor(bottomEdge - VIEWPORT_CHROME_GAP_PX - top),
       );
 
-      setReadableViewport((current) =>
-        current.top === top && current.bottom === bottom && current.height === height
-          ? current
-          : { top, bottom, height },
-      );
+      dispatchUi({ type: "readable-viewport", viewport: { top, bottom, height } });
     };
 
     const scheduleUpdate = () => {
@@ -327,9 +357,7 @@ export function ReaderPaginated({
   useEffect(() => {
     if (activeWordPageIndex < 0) return;
     const frame = window.requestAnimationFrame(() => {
-      setPageIndex((prev) =>
-        prev === activeWordPageIndex ? prev : activeWordPageIndex,
-      );
+      dispatchUi({ type: "page-index", pageIndex: (prev) => prev === activeWordPageIndex ? prev : activeWordPageIndex });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeWordPageIndex]);
@@ -416,7 +444,7 @@ export function ReaderPaginated({
     );
     if (idx < 0) return;
     const frame = window.requestAnimationFrame(() => {
-      setPageIndex((prev) => (prev === idx ? prev : idx));
+      dispatchUi({ type: "page-index", pageIndex: (prev) => (prev === idx ? prev : idx) });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
@@ -434,7 +462,7 @@ export function ReaderPaginated({
   useEffect(() => {
     if (chapterTotal <= 0 || pageIndex < chapterTotal) return;
     const frame = window.requestAnimationFrame(() => {
-      setPageIndex(chapterTotal - 1);
+      dispatchUi({ type: "page-index", pageIndex: chapterTotal - 1 });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [chapterTotal, pageIndex]);
@@ -505,7 +533,7 @@ export function ReaderPaginated({
           )
         : undefined;
     suppressNextAnchorSyncRef.current = true;
-    setPageIndex(clamped);
+    dispatchUi({ type: "page-index", pageIndex: clamped });
     onLocationChange(page?.firstSentenceId ?? null);
   };
 
@@ -526,7 +554,7 @@ export function ReaderPaginated({
               pageLineHeight,
             )
           : 1;
-      setPageIndex(Math.max(0, prevTotal - 1));
+      dispatchUi({ type: "page-index", pageIndex: Math.max(0, prevTotal - 1) });
       onChapterChange(chapterIndex - 1, "end");
     }
   };
@@ -537,7 +565,7 @@ export function ReaderPaginated({
       return;
     }
     if (chapterIndex < book.chapters.length - 1) {
-      setPageIndex(0);
+      dispatchUi({ type: "page-index", pageIndex: 0 });
       onChapterChange(chapterIndex + 1, "start");
     }
   };
@@ -673,10 +701,9 @@ export function ReaderPaginated({
                           if (suppressNextClickRef.current) event.preventDefault();
                         }}
                         onMouseEnter={() => {
-                          setHoveredBookmarkTarget({
-                            lineKey,
-                            sentenceId: part.id,
-                            offset: part.sentenceOffset,
+                          dispatchUi({
+                            type: "hovered-bookmark-target",
+                            target: { lineKey, sentenceId: part.id, offset: part.sentenceOffset },
                           });
                         }}
                         onKeyDown={(e) => {
@@ -1148,8 +1175,8 @@ function findPageIndexForActiveWord(
       const nextHeight = gap + renderedLineHeight;
       if (colUsed > 0 && colUsed + nextHeight > pageHeight) advanceColumn();
 
-      const activePart = parts.find((part) => part.id === activeWord.sentenceId);
-      if (activePart) {
+      for (const activePart of parts) {
+        if (activePart.id !== activeWord.sentenceId) continue;
         wordOffset ??= getActiveWordSentenceOffset(activePart.sentenceText, activeWord);
         if (wordOffset !== null && partContainsOffset(activePart, wordOffset)) {
           found = pageIndex;

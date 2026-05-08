@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { Effect } from 'effect'
 import { BookHeader } from './components/BookHeader'
 import { Reader } from './components/Reader'
@@ -12,15 +12,19 @@ import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech } from './tts/kokoroTts'
 import type { TtsAudio } from './tts/kokoroTts'
 import { getChapterDisplayTitle } from './utils/chapterTitle'
-import type { ActiveWord, Book, Bookmark, BookmarkMap, BookmarkPageInfo, CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo, ScrollRequest, Theme } from './types'
+import { usePlaybackFlags } from './hooks/usePlaybackFlags'
+import { useReaderRuntime } from './hooks/useReaderRuntime'
+import { useBookState } from './hooks/useBookState'
+import { useReadingPosition } from './hooks/useReadingPosition'
+import { useClampReadingPosition } from './hooks/useClampReadingPosition'
+import { useLoadLibraryFromDb } from './hooks/useLoadLibraryFromDb'
+import { writeLibraryToDb } from './storage/libraryDb'
+import type { Book, Bookmark, BookmarkPageInfo, CounterMode, ReaderMode, ScrollProgressInfo, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
 const PLAYBACK_SPEED_STORAGE_KEY = `${STORAGE_PREFIX}playbackSpeed`
 const BOOK_STORAGE_KEY = `${STORAGE_PREFIX}book`
 const LIBRARY_STORAGE_KEY = `${STORAGE_PREFIX}library`
-const LIBRARY_DB_NAME = 'audiobook-ui'
-const LIBRARY_DB_STORE = 'books'
-const LIBRARY_DB_KEY = 'library'
 const ACTIVE_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}activeBookId`
 const PROGRESS_STORAGE_KEY = `${STORAGE_PREFIX}progress`
 const PROGRESS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}progressByBook`
@@ -36,6 +40,54 @@ type StoredProgress = {
   counterMode?: CounterMode
 }
 
+type AppSettingsState = {
+  mode: ReaderMode
+  theme: Theme
+  fontSize: number
+  lineHeight: number
+  measure: number
+  speed: number
+}
+
+type AppSettingsAction =
+  | { type: 'mode'; value: ReaderMode }
+  | { type: 'theme'; value: Theme }
+  | { type: 'fontSize'; value: number }
+  | { type: 'lineHeight'; value: number }
+  | { type: 'measure'; value: number }
+  | { type: 'speed'; value: number }
+
+function appSettingsReducer(state: AppSettingsState, action: AppSettingsAction): AppSettingsState {
+  switch (action.type) {
+    case 'mode':
+      return state.mode === action.value ? state : { ...state, mode: action.value }
+    case 'theme':
+      return state.theme === action.value ? state : { ...state, theme: action.value }
+    case 'fontSize':
+      return state.fontSize === action.value ? state : { ...state, fontSize: action.value }
+    case 'lineHeight':
+      return state.lineHeight === action.value ? state : { ...state, lineHeight: action.value }
+    case 'measure':
+      return state.measure === action.value ? state : { ...state, measure: action.value }
+    case 'speed':
+      return state.speed === action.value ? state : { ...state, speed: action.value }
+  }
+}
+
+type OverlayName = 'settings' | 'toc' | 'bookmarks' | 'library'
+type OverlayState = Record<OverlayName, boolean>
+type OverlayAction = { type: 'open'; overlay: OverlayName } | { type: 'close'; overlay: OverlayName }
+
+function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
+  if (action.type === 'close') return state[action.overlay] ? { ...state, [action.overlay]: false } : state
+  return {
+    settings: action.overlay === 'settings',
+    toc: action.overlay === 'toc',
+    bookmarks: action.overlay === 'bookmarks',
+    library: action.overlay === 'library',
+  }
+}
+
 type StoredSettings = {
   mode?: ReaderMode
   theme?: Theme
@@ -43,15 +95,6 @@ type StoredSettings = {
   lineHeight?: number
   measure?: number
   speed?: number
-}
-
-type NavigationHistoryEntry = {
-  sentenceId: string
-}
-
-type NavigationHistory = {
-  entries: NavigationHistoryEntry[]
-  index: number
 }
 
 function readJson<T>(key: string): T | null {
@@ -69,37 +112,6 @@ function writeJson(key: string, value: unknown) {
   } catch (error) {
     console.warn(`Could not save ${key} to browser storage.`, error)
   }
-}
-
-function openLibraryDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(LIBRARY_DB_NAME, 1)
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(LIBRARY_DB_STORE)
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function readLibraryFromDb() {
-  if (!('indexedDB' in window)) return null
-  const db = await openLibraryDb()
-  return new Promise<Book[] | null>((resolve, reject) => {
-    const request = db.transaction(LIBRARY_DB_STORE, 'readonly').objectStore(LIBRARY_DB_STORE).get(LIBRARY_DB_KEY)
-    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : null)
-    request.onerror = () => reject(request.error)
-  }).finally(() => db.close())
-}
-
-async function writeLibraryToDb(library: Book[]) {
-  if (!('indexedDB' in window)) return
-  const db = await openLibraryDb()
-  await new Promise<void>((resolve, reject) => {
-    const request = db.transaction(LIBRARY_DB_STORE, 'readwrite').objectStore(LIBRARY_DB_STORE).put(library, LIBRARY_DB_KEY)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  }).finally(() => db.close())
 }
 
 function readStoredPlaybackSpeed(settings = readJson<StoredSettings>(SETTINGS_STORAGE_KEY)) {
@@ -169,39 +181,67 @@ export default function App() {
   const progressByBook = useMemo(() => readProgressByBook(), [])
   const storedBookmarksByBook = useMemo(() => readBookmarksByBook(), [])
   const fallbackProgress = useMemo(() => readStoredProgress(), [])
-  const [mode, setMode] = useState<ReaderMode>(storedSettings.mode === 'paginated' ? 'paginated' : 'scroll')
-  const [theme, setTheme] = useState<Theme>(
-    storedSettings.theme === 'light' || storedSettings.theme === 'dark' || storedSettings.theme === 'system'
-      ? storedSettings.theme
-      : 'system',
-  )
-  const [fontSize, setFontSize] = useState(
-    Number.isFinite(storedSettings.fontSize) ? Math.min(28, Math.max(14, storedSettings.fontSize ?? 19)) : 19,
-  )
-  const [lineHeight, setLineHeight] = useState(
-    Number.isFinite(storedSettings.lineHeight) ? Math.min(2.2, Math.max(1.25, storedSettings.lineHeight ?? 1.65)) : 1.65,
-  )
-  const [measure, setMeasure] = useState(
-    Number.isFinite(storedSettings.measure) ? Math.min(84, Math.max(42, storedSettings.measure ?? 62)) : 62,
-  )
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [tocOpen, setTocOpen] = useState(false)
-  const [bookmarksOpen, setBookmarksOpen] = useState(false)
-  const [libraryOpen, setLibraryOpen] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [speed, setSpeed] = useState(() => readStoredPlaybackSpeed(storedSettings))
-  const [library, setLibrary] = useState<Book[]>(readStoredLibrary)
+  const [settings, dispatchSettings] = useReducer(appSettingsReducer, storedSettings, (stored): AppSettingsState => ({
+    mode: stored.mode === 'paginated' ? 'paginated' : 'scroll',
+    theme:
+      stored.theme === 'light' || stored.theme === 'dark' || stored.theme === 'system'
+        ? stored.theme
+        : 'system',
+    fontSize: Number.isFinite(stored.fontSize) ? Math.min(28, Math.max(14, stored.fontSize ?? 19)) : 19,
+    lineHeight: Number.isFinite(stored.lineHeight) ? Math.min(2.2, Math.max(1.25, stored.lineHeight ?? 1.65)) : 1.65,
+    measure: Number.isFinite(stored.measure) ? Math.min(84, Math.max(42, stored.measure ?? 62)) : 62,
+    speed: readStoredPlaybackSpeed(stored),
+  }))
+  const { mode, theme, fontSize, lineHeight, measure, speed } = settings
+  const [overlays, dispatchOverlay] = useReducer(overlayReducer, {
+    settings: false,
+    toc: false,
+    bookmarks: false,
+    library: false,
+  })
+  const { settings: settingsOpen, toc: tocOpen, bookmarks: bookmarksOpen, library: libraryOpen } = overlays
+  const setMode = (value: ReaderMode) => dispatchSettings({ type: 'mode', value })
+  const setTheme = (value: Theme) => dispatchSettings({ type: 'theme', value })
+  const setFontSize = (value: number) => dispatchSettings({ type: 'fontSize', value })
+  const setLineHeight = (value: number) => dispatchSettings({ type: 'lineHeight', value })
+  const setMeasure = (value: number) => dispatchSettings({ type: 'measure', value })
+  const setSpeed = (value: number) => dispatchSettings({ type: 'speed', value })
+  const openOverlay = (overlay: OverlayName) => dispatchOverlay({ type: 'open', overlay })
+  const closeOverlay = (overlay: OverlayName) => dispatchOverlay({ type: 'close', overlay })
+  const {
+    library,
+    setLibrary,
+    activeBookId,
+    setActiveBookId,
+    book,
+    setBook,
+    chapterIndex,
+    setChapterIndex,
+    bookmarksByBook,
+    setBookmarksByBook,
+  } = useBookState({
+    initialLibrary: readStoredLibrary,
+    initialActiveBookId: (initialLibrary) => window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY) ?? initialLibrary[0]?.id ?? sampleBook.id,
+    initialBook: (initialLibrary, initialActiveBookId) => initialLibrary.find((candidate) => candidate.id === initialActiveBookId) ?? initialLibrary[0] ?? sampleBook,
+    initialChapterIndex: (initialBook) => Math.max(0, (progressByBook[initialBook.id] ?? fallbackProgress).chapterIndex ?? 0),
+    initialBookmarksByBook: storedBookmarksByBook,
+  })
   const hasLoadedLibraryDbRef = useRef(false)
-  const [activeBookId, setActiveBookId] = useState(() => window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY) ?? library[0]?.id ?? sampleBook.id)
-  const [book, setBook] = useState<Book>(() => library.find((candidate) => candidate.id === activeBookId) ?? library[0] ?? sampleBook)
   const initialProgress = progressByBook[book.id] ?? fallbackProgress
-  const [chapterIndex, setChapterIndex] = useState(() => Math.max(0, initialProgress.chapterIndex ?? 0))
-  const [isLoadingBook, setIsLoadingBook] = useState(false)
-  const [paginationInfo, setPaginationInfo] = useState<PaginationInfo | null>(null)
-  const [bookmarkPages, setBookmarkPages] = useState<Record<string, BookmarkPageInfo>>({})
-  const [counterMode, setCounterMode] = useState<CounterMode>(initialProgress.counterMode === 'book' ? 'book' : 'chapter')
-  const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null)
-  const [syncKey, setSyncKey] = useState(0)
+  const {
+    isLoadingBook,
+    setIsLoadingBook,
+    paginationInfo,
+    setPaginationInfo,
+    bookmarkPages,
+    setBookmarkPages,
+    counterMode,
+    setCounterMode,
+    scrollRequest,
+    setScrollRequest,
+    syncKey,
+    setSyncKey,
+  } = useReaderRuntime(initialProgress.counterMode === 'book' ? 'book' : 'chapter')
   const scrollRequestKeyRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -209,8 +249,14 @@ export default function App() {
   const speedRef = useRef(speed)
   const wordFrameRef = useRef(0)
   const prefetchControllersRef = useRef<AbortController[]>([])
-  const [isBuffering, setIsBuffering] = useState(false)
-  const [isCurrentSentenceVisible, setIsCurrentSentenceVisible] = useState(false)
+  const {
+    isPlaying,
+    setIsPlaying,
+    isBuffering,
+    setIsBuffering,
+    isCurrentSentenceVisible,
+    setIsCurrentSentenceVisible,
+  } = usePlaybackFlags()
 
   useTheme(theme)
 
@@ -249,11 +295,19 @@ export default function App() {
     sentences.forEach((sentence, index) => map.set(sentence.id, index))
     return map
   }, [sentences])
-  const [currentSentenceId, setCurrentSentenceId] = useState<string | null>(initialProgress.currentSentenceId ?? null)
-  const [locationSentenceId, setLocationSentenceId] = useState<string | null>(initialProgress.locationSentenceId ?? null)
-  const [navigationHistory, setNavigationHistory] = useState<NavigationHistory>({ entries: [], index: -1 })
-  const [activeWord, setActiveWord] = useState<ActiveWord | null>(null)
-  const [bookmarksByBook, setBookmarksByBook] = useState<BookmarkMap>(storedBookmarksByBook)
+  const {
+    currentSentenceId,
+    setCurrentSentenceId,
+    locationSentenceId,
+    setLocationSentenceId,
+    navigationHistory,
+    setNavigationHistory,
+    activeWord,
+    setActiveWord,
+  } = useReadingPosition({
+    initialCurrentSentenceId: initialProgress.currentSentenceId,
+    initialLocationSentenceId: initialProgress.locationSentenceId,
+  })
   const bookmarkBySentenceId = useMemo(() => {
     const map = new Map<string, Bookmark>()
     ;(bookmarksByBook[book.id] ?? []).forEach((bookmark) => map.set(bookmark.sentenceId, bookmark))
@@ -296,17 +350,13 @@ export default function App() {
     }
   }, [book.chapters.length, chapter, currentSentenceId, locationSentenceId, sentenceMeta, sentences.length])
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      setChapterIndex((index) => Math.max(0, Math.min(book.chapters.length - 1, index)))
-      setCurrentSentenceId((id) =>
-        id && sentences.some((s) => s.id === id) ? id : null,
-      )
-      setLocationSentenceId((id) =>
-        id && sentences.some((s) => s.id === id) ? id : null,
-      )
-    })
-  }, [book.chapters.length, sentences])
+  useClampReadingPosition({
+    book,
+    sentences,
+    setChapterIndex,
+    setCurrentSentenceId,
+    setLocationSentenceId,
+  })
 
   useEffect(() => {
     writeJson(SETTINGS_STORAGE_KEY, { mode, theme, fontSize, lineHeight, measure, speed })
@@ -323,44 +373,18 @@ export default function App() {
     writeJson(PROGRESS_BY_BOOK_STORAGE_KEY, { ...readProgressByBook(), [book.id]: progress })
   }, [book.id, chapterIndex, currentSentenceId, locationSentenceId, counterMode])
 
-  useEffect(() => {
-    let cancelled = false
-    readLibraryFromDb()
-      .then((storedLibrary) => {
-        if (cancelled) return
-        const dbLibrary = storedLibrary?.filter((storedBook) => storedBook?.chapters?.length) ?? []
-        if (!dbLibrary.length) return
-        const nextLibrary = dbLibrary.some((storedBook) => storedBook.id === sampleBook.id)
-          ? dbLibrary
-          : [sampleBook, ...dbLibrary]
-        const storedActiveBookId = window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY)
-        const nextBook = nextLibrary.find((candidate) => candidate.id === storedActiveBookId) ?? nextLibrary[0] ?? sampleBook
-        const progress = readProgressByBook()[nextBook.id]
-        const nextChapterIndex = Math.max(0, Math.min(nextBook.chapters.length - 1, progress?.chapterIndex ?? 0))
-        const hasProgressLocation = progress?.locationSentenceId
-          ? nextBook.chapters.some((chapter) =>
-              chapter.paragraphs.some((paragraph) =>
-                paragraph.sentences.some((sentence) => sentence.id === progress.locationSentenceId),
-              ),
-            )
-          : false
-        const fallbackLocationId = nextBook.chapters[nextChapterIndex]?.paragraphs[0]?.sentences[0]?.id ?? null
-        setLibrary(nextLibrary)
-        setActiveBookId(nextBook.id)
-        setBook(nextBook)
-        setChapterIndex(nextChapterIndex)
-        setCurrentSentenceId(progress?.currentSentenceId ?? null)
-        setLocationSentenceId(hasProgressLocation ? progress?.locationSentenceId ?? null : fallbackLocationId)
-        setCounterMode(progress?.counterMode === 'book' ? 'book' : 'chapter')
-      })
-      .catch((error) => console.warn('Could not load library from browser database.', error))
-      .finally(() => {
-        if (!cancelled) hasLoadedLibraryDbRef.current = true
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  useLoadLibraryFromDb({
+    activeBookStorageKey: ACTIVE_BOOK_STORAGE_KEY,
+    markLoadedRef: hasLoadedLibraryDbRef,
+    readProgressByBook,
+    setLibrary,
+    setActiveBookId,
+    setBook,
+    setChapterIndex,
+    setCurrentSentenceId,
+    setLocationSentenceId,
+    setCounterMode,
+  })
 
   useEffect(() => {
     if (!hasLoadedLibraryDbRef.current) return
@@ -675,7 +699,7 @@ export default function App() {
       setLibrary((books) => [nextBook, ...books.filter((book) => book.id !== nextBook.id)])
       setActiveBookId(nextBook.id)
       setBook(nextBook)
-      setLibraryOpen(false)
+      closeOverlay('library')
       setChapterIndex(0)
       setCurrentSentenceId(null)
       setNavigationHistory({ entries: [], index: -1 })
@@ -717,7 +741,7 @@ export default function App() {
       if (nextLocationId) requestScrollToSentence(nextLocationId)
       else requestScrollToChapter(nextChapterIndex)
     }
-    setLibraryOpen(false)
+    closeOverlay('library')
   }
 
   return (
@@ -728,28 +752,28 @@ export default function App() {
         mode={mode}
         onModeChange={setMode}
         onOpenLibrary={() => {
-          setTocOpen(false)
-          setBookmarksOpen(false)
-          setSettingsOpen(false)
-          setLibraryOpen(true)
+          closeOverlay('toc')
+          closeOverlay('bookmarks')
+          closeOverlay('settings')
+          openOverlay('library')
         }}
         onOpenToc={() => {
-          setLibraryOpen(false)
-          setBookmarksOpen(false)
-          setSettingsOpen(false)
-          setTocOpen(true)
+          closeOverlay('library')
+          closeOverlay('bookmarks')
+          closeOverlay('settings')
+          openOverlay('toc')
         }}
         onOpenBookmarks={() => {
-          setLibraryOpen(false)
-          setTocOpen(false)
-          setSettingsOpen(false)
-          setBookmarksOpen(true)
+          closeOverlay('library')
+          closeOverlay('toc')
+          closeOverlay('settings')
+          openOverlay('bookmarks')
         }}
         onOpenSettings={() => {
-          setLibraryOpen(false)
-          setTocOpen(false)
-          setBookmarksOpen(false)
-          setSettingsOpen(true)
+          closeOverlay('library')
+          closeOverlay('toc')
+          closeOverlay('bookmarks')
+          openOverlay('settings')
         }}
       />
 
@@ -825,7 +849,7 @@ export default function App() {
         open={libraryOpen}
         books={library}
         currentBookId={book.id}
-        onClose={() => setLibraryOpen(false)}
+        onClose={() => closeOverlay('library')}
         onAddBook={() => fileInputRef.current?.click()}
         onSelectBook={selectBookFromLibrary}
       />
@@ -834,7 +858,7 @@ export default function App() {
         book={book}
         currentChapterIndex={chapterIndex}
         open={tocOpen}
-        onClose={() => setTocOpen(false)}
+        onClose={() => closeOverlay('toc')}
         onSelectChapter={(index) => changeChapter(index, 'start', { recordHistory: true })}
       />
 
@@ -842,13 +866,13 @@ export default function App() {
         open={bookmarksOpen}
         bookTitle={book.title}
         items={bookmarkMenuItems}
-        onClose={() => setBookmarksOpen(false)}
+        onClose={() => closeOverlay('bookmarks')}
         onSelectBookmark={selectBookmark}
       />
 
       <ReaderSettings
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => closeOverlay('settings')}
         fontSize={fontSize}
         onFontSizeChange={setFontSize}
         lineHeight={lineHeight}

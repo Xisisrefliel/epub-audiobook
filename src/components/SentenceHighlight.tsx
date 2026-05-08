@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, useReducer, type RefObject } from 'react'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -36,11 +36,11 @@ export function SentenceHighlight({
   fontSize,
   refreshKey,
 }: Props) {
-  const [rects, setRects] = useState<Rect[]>([])
+  const [rects, dispatchRects] = useReducer((_: Rect[], next: Rect[]) => next, [])
 
   useLayoutEffect(() => {
     if (!activeId) {
-      queueMicrotask(() => setRects([]))
+      queueMicrotask(() => dispatchRects([]))
       return
     }
     const article = articleRef.current
@@ -51,7 +51,7 @@ export function SentenceHighlight({
         article.querySelectorAll<HTMLElement>(`[data-sid="${CSS.escape(activeId)}"]`),
       )
       if (spans.length === 0) {
-        setRects([])
+        dispatchRects([])
         return
       }
       const articleRect = article.getBoundingClientRect()
@@ -75,7 +75,7 @@ export function SentenceHighlight({
           height,
         }]
       })
-      setRects(mergeLineRects(next, fontSize * 0.35))
+      dispatchRects(mergeLineRects(next, fontSize * 0.35))
     }
 
     compute()

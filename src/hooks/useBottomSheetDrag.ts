@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, type PointerEvent } from 'react'
+import { useRef, useState, useEffect, useCallback, useReducer, type PointerEvent } from 'react'
 
 type Options = {
   open: boolean
@@ -10,6 +10,20 @@ const FLING_VELOCITY = 650
 const ENGAGE_THRESHOLD = 6
 const VELOCITY_WINDOW_MS = 80
 const DESKTOP_EXIT_MS = 200
+
+type DesktopPresence = { mounted: boolean; closing: boolean }
+type DesktopPresenceAction = { type: 'open' } | { type: 'close-start' } | { type: 'close-end' }
+
+function desktopPresenceReducer(state: DesktopPresence, action: DesktopPresenceAction): DesktopPresence {
+  switch (action.type) {
+    case 'open':
+      return { mounted: true, closing: false }
+    case 'close-start':
+      return state.mounted ? { mounted: true, closing: true } : state
+    case 'close-end':
+      return { mounted: false, closing: false }
+  }
+}
 
 function rubberBand(delta: number, dim = 120) {
   if (!Number.isFinite(delta) || delta <= 0) return 0
@@ -91,8 +105,11 @@ type Phase = 'idle' | 'pending' | 'dragging'
 export function useBottomSheetDrag({ open, onClose }: Options) {
   const isMobile = useIsMobile()
   const [shouldRender, setShouldRender] = useState(open)
-  const [desktopMounted, setDesktopMounted] = useState(open)
-  const [desktopClosing, setDesktopClosing] = useState(false)
+  const [{ mounted: desktopMounted, closing: desktopClosing }, dispatchDesktopPresence] = useReducer(
+    desktopPresenceReducer,
+    open,
+    (initialOpen) => ({ mounted: initialOpen, closing: false }),
+  )
   const initialTranslateY = open ? 0 : typeof window !== 'undefined' ? window.innerHeight : 800
   const translateYRef = useRef(initialTranslateY)
   const [translateY, setTranslateY] = useState(initialTranslateY)
@@ -125,25 +142,19 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
   const overlayVisible = isMobile ? shouldRender : desktopMounted
 
   /* Drawer desktop lifecycle: delayed unmount for exit animation (same idea as BookLibrary). */
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (isMobile) return
     if (open) {
-      setDesktopMounted(true)
-      setDesktopClosing(false)
+      dispatchDesktopPresence({ type: 'open' })
       return
     }
     if (!desktopMounted) return
-    setDesktopClosing(true)
+    dispatchDesktopPresence({ type: 'close-start' })
     const t = setTimeout(() => {
-      if (isMountedRef.current) {
-        setDesktopMounted(false)
-        setDesktopClosing(false)
-      }
+      if (isMountedRef.current) dispatchDesktopPresence({ type: 'close-end' })
     }, DESKTOP_EXIT_MS)
     return () => clearTimeout(t)
   }, [open, isMobile, desktopMounted])
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Listen for Escape while overlay is visible (incl. desktop exit).
   useEffect(() => {

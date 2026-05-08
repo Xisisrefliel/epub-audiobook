@@ -186,7 +186,7 @@ function ReaderProgress({
     if (frameRef.current) cancelAnimationFrame(frameRef.current)
     frameRef.current = 0
     setDragPct(null)
-    lastLiveSeekRef.current = performance.now()
+    lastLiveSeekRef.current = event.timeStamp
     onProgressSeek(pct)
   }
 
@@ -207,7 +207,7 @@ function ReaderProgress({
             const pct = pctFromPointer(event)
             setDragContext(progressContext)
             latestPctRef.current = pct
-            lastLiveSeekRef.current = performance.now()
+            lastLiveSeekRef.current = event.timeStamp
             setDragPct(pct * 100)
             onProgressSeek(pct)
           }}

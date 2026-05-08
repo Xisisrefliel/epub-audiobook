@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, useReducer, type RefObject } from 'react'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -11,11 +11,11 @@ const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)'
 const DURATION = 180
 
 export function WordHighlight({ activeKey, articleRef }: Props) {
-  const [rect, setRect] = useState<Rect | null>(null)
+  const [rect, dispatchRect] = useReducer((_: Rect | null, next: Rect | null) => next, null)
 
   useLayoutEffect(() => {
     if (!activeKey) {
-      queueMicrotask(() => setRect(null))
+      queueMicrotask(() => dispatchRect(null))
       return
     }
 
@@ -25,7 +25,7 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
     const compute = () => {
       const target = article.querySelector<HTMLElement>(`[data-active-word="${CSS.escape(activeKey)}"]`)
       if (!target) {
-        setRect(null)
+        dispatchRect(null)
         return
       }
       const articleRect = article.getBoundingClientRect()
@@ -36,7 +36,7 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
       const targetRect = textRects[0] ?? target.getBoundingClientRect()
       const fontSize = Number.parseFloat(window.getComputedStyle(target).fontSize) || targetRect.height
       const verticalInset = fontSize * 0.08
-      setRect({
+      dispatchRect({
         top: targetRect.top - articleRect.top + verticalInset,
         left: targetRect.left - articleRect.left,
         width: targetRect.width,

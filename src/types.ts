@@ -1,7 +1,7 @@
 export type ReaderMode = 'scroll' | 'paginated'
 export type Theme = 'light' | 'dark' | 'system'
 
-export type Sentence = {
+type Sentence = {
   id: string
   text: string
 }

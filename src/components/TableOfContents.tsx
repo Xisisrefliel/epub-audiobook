@@ -52,7 +52,7 @@ export function TableOfContents({
       <button
         type="button"
         aria-label="Close table of contents"
-        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55', drawerBackdropClass]
+        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-zinc-950/55', drawerBackdropClass]
           .filter(Boolean)
           .join(' ')}
         style={backdropStyle}
@@ -62,7 +62,7 @@ export function TableOfContents({
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-full h-[40vh] bg-white sm:hidden dark:bg-zinc-950"
-        style={{ transform: sheetStyle.transform, willChange: sheetStyle.willChange }}
+        style={{ transform: sheetStyle.transform }}
       />
 
       <aside
@@ -80,7 +80,7 @@ export function TableOfContents({
           className="flex touch-none cursor-grab justify-center px-6 pb-2 pt-3 active:cursor-grabbing sm:hidden"
           aria-label="Drag to close table of contents"
         >
-          <div className="h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          <div className="size-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
         </div>
         <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-5 dark:border-zinc-800">
           <div className="min-w-0 flex-1 pt-0.5">
@@ -95,15 +95,15 @@ export function TableOfContents({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="control-button h-9 w-9"
+            className="control-button size-9"
           >
-            <X className="h-4 w-4" strokeWidth={2} />
+            <X className="size-4" strokeWidth={2} />
           </button>
         </div>
 
         <nav
           ref={sheetRef as React.RefObject<HTMLElement>}
-          className="flex-1 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="flex-1 overflow-y-auto p-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           <TocList
             items={toc}

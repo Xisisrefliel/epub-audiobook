@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -106,6 +107,15 @@ export function ReaderPaginated({
   const [pageIndex, setPageIndex] = useState(0);
   const [hoveredBookmarkTarget, setHoveredBookmarkTarget] =
     useState<BookmarkTarget | null>(null);
+  const chapterIndexBySentenceId = useMemo(() => {
+    const map = new Map<string, number>();
+    book.chapters.forEach((bookChapter, index) => {
+      bookChapter.paragraphs.forEach((paragraph) => {
+        paragraph.sentences.forEach((sentence) => map.set(sentence.id, index));
+      });
+    });
+    return map;
+  }, [book.chapters]);
   const longPressRef = useRef<{
     timer: number;
     feedbackTimer: number;
@@ -303,20 +313,16 @@ export function ReaderPaginated({
     pageLineHeight,
   ]);
 
+  const notifyCurrentSentenceVisibility = useEffectEvent(onCurrentSentenceVisibilityChange);
+
   useEffect(() => {
-    onCurrentSentenceVisibilityChange(
+    notifyCurrentSentenceVisibility(
       !!currentSentenceId &&
         (activeWordPageIndex >= 0
           ? activeWordPageIndex === pageIndex
           : !!currentPage?.sentenceIds.has(currentSentenceId)),
     );
-  }, [
-    activeWordPageIndex,
-    currentPage,
-    currentSentenceId,
-    onCurrentSentenceVisibilityChange,
-    pageIndex,
-  ]);
+  }, [activeWordPageIndex, currentPage, currentSentenceId, pageIndex]);
 
   useEffect(() => {
     if (activeWordPageIndex < 0) return;
@@ -329,12 +335,15 @@ export function ReaderPaginated({
   }, [activeWordPageIndex]);
 
 
+  const notifyPaginationChange = useEffectEvent(onPaginationChange);
+  const notifyBookmarkPagesChange = useEffectEvent(onBookmarkPagesChange);
+
   useEffect(() => {
     if (chapterTotal === 0 || totalBookPages === 0) {
-      onPaginationChange(null);
+      notifyPaginationChange(null);
       return;
     }
-    onPaginationChange({
+    notifyPaginationChange({
       pageIndex: bookPageOffset + pageIndex,
       totalPages: totalBookPages,
       chapterPageIndex: pageIndex,
@@ -345,26 +354,21 @@ export function ReaderPaginated({
     chapterTotal,
     bookPageOffset,
     totalBookPages,
-    onPaginationChange,
   ]);
 
   useEffect(() => {
-    return () => onPaginationChange(null);
-  }, [onPaginationChange]);
+    return () => notifyPaginationChange(null);
+  }, []);
 
   useEffect(() => {
     if (!layoutInfo || !pageHeight || !chapterPageCounts) {
-      onBookmarkPagesChange({});
+      notifyBookmarkPagesChange({});
       return;
     }
 
     const pages: Record<string, BookmarkPageInfo> = {};
     for (const sentenceId of bookmarkBySentenceId.keys()) {
-      const chapterIndexForBookmark = book.chapters.findIndex((ch) =>
-        ch.paragraphs.some((p) =>
-          p.sentences.some((sentence) => sentence.id === sentenceId),
-        ),
-      );
+      const chapterIndexForBookmark = chapterIndexBySentenceId.get(sentenceId) ?? -1;
       if (chapterIndexForBookmark < 0) continue;
       const pageIndexInChapter = findPageIndexForSentence(
         book.chapters[chapterIndexForBookmark],
@@ -382,13 +386,13 @@ export function ReaderPaginated({
       pages[sentenceId] = { pageIndex: bookPageIndex, totalPages: totalBookPages };
     }
 
-    onBookmarkPagesChange(pages);
+    notifyBookmarkPagesChange(pages);
   }, [
     book.chapters,
     bookmarkBySentenceId,
+    chapterIndexBySentenceId,
     chapterPageCounts,
     layoutInfo,
-    onBookmarkPagesChange,
     pageFontSize,
     pageHeight,
     pageLineHeight,
@@ -620,9 +624,7 @@ export function ReaderPaginated({
                   key={lineKey}
                   className={
                     "group/line relative " +
-                    (line.endsParagraph
-                      ? "whitespace-nowrap"
-                      : "whitespace-nowrap text-justify [text-align-last:justify]")
+                    "whitespace-nowrap"
                   }
                   style={{
                     marginTop:
@@ -798,14 +800,14 @@ function BookmarkButton({
       }}
       onKeyDown={(event) => event.stopPropagation()}
       className={
-        "absolute -left-7 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 " +
+        "absolute -left-7 top-1/2 hidden size-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 " +
         (isBookmarked
           ? "text-rose-900 opacity-90 dark:text-rose-300"
           : "text-zinc-500 opacity-0 dark:text-zinc-500")
       }
     >
       <Bookmark
-        className="h-4 w-4"
+        className="size-4"
         strokeWidth={1.8}
         fill={isBookmarked ? "currentColor" : "none"}
       />
@@ -840,22 +842,22 @@ function HighlightedText({
     activeWord?.sentenceId === part.id
       ? findActiveWordMatch(part, activeWord)
       : null;
-  if (!match) return renderBookmarkText(part.text, isBookmarked, isActive);
+  if (!match) return <BookmarkText text={part.text} isBookmarked={isBookmarked} isActive={isActive} />;
   return (
     <>
-      {renderBookmarkText(part.text.slice(0, match.start), isBookmarked, isActive)}
+      <BookmarkText text={part.text.slice(0, match.start)} isBookmarked={isBookmarked} isActive={isActive} />
       <mark
         data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? "pause" : "word"}`}
         className={(isBookmarked ? "bookmark-text-highlight " : "") + (isBookmarked && isActive ? "active-bookmark-cue " : "") + "rounded-[0.2em] bg-transparent px-0.5 text-inherit"}
       >
         {part.text.slice(match.start, match.end)}
       </mark>
-      {renderBookmarkText(part.text.slice(match.end), isBookmarked, isActive)}
+      <BookmarkText text={part.text.slice(match.end)} isBookmarked={isBookmarked} isActive={isActive} />
     </>
   );
 }
 
-function renderBookmarkText(text: string, isBookmarked: boolean, isActive: boolean) {
+function BookmarkText({ text, isBookmarked, isActive }: { text: string; isBookmarked: boolean; isActive: boolean }) {
   if (!isBookmarked) return text;
   const leading = text.match(/^\s*/u)?.[0] ?? "";
   const trailing = text.match(/\s*$/u)?.[0] ?? "";
@@ -1198,9 +1200,9 @@ function PageNav({
           type="button"
           onClick={onPrev}
           aria-label="Previous page"
-          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-100 px-2 text-xs font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-black dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm"
+          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-100 px-2 text-xs font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-zinc-950 dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm"
         >
-          <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
+          <ChevronLeft className="size-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
           Prev
         </button>
 
@@ -1217,7 +1219,7 @@ function PageNav({
           className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-900 px-2 text-xs font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm dark:bg-zinc-50 dark:text-zinc-950"
         >
           Next
-          <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
+          <ChevronRight className="size-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
         </button>
       </div>
     </div>

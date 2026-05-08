@@ -56,8 +56,8 @@ export function AuthGate() {
         onSubmit={submit}
         className="w-full max-w-sm rounded-3xl border border-zinc-200 bg-white/90 p-6 shadow-xl shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80 dark:shadow-black/30 dark:ring-white/[0.04]"
       >
-        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-          <LockKeyhole className="h-5 w-5" />
+        <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+          <LockKeyhole className="size-5" />
         </div>
         <h1 className="text-xl font-semibold tracking-tight">Enter invite code</h1>
         <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
@@ -71,7 +71,6 @@ export function AuthGate() {
           id="invite-code"
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          autoFocus
           autoComplete="one-time-code"
           className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-base outline-none transition-[border-color,box-shadow] duration-150 focus:border-zinc-400 focus:shadow-[0_0_0_3px_rgba(113,113,122,0.12)] dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-600"
           placeholder="••••••••"

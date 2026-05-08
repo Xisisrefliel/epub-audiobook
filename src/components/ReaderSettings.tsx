@@ -55,7 +55,7 @@ export function ReaderSettings({
       aria-modal="true"
     >
       <div
-        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55', drawerBackdropClass]
+        className={['absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-zinc-950/55', drawerBackdropClass]
           .filter(Boolean)
           .join(' ')}
         aria-hidden
@@ -65,7 +65,7 @@ export function ReaderSettings({
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-full h-[40vh] bg-white sm:hidden dark:bg-zinc-950"
-        style={{ transform: sheetStyle.transform, willChange: sheetStyle.willChange }}
+        style={{ transform: sheetStyle.transform }}
       />
       <aside
         ref={sheetRef}
@@ -83,7 +83,7 @@ export function ReaderSettings({
           className="flex touch-none cursor-grab justify-center px-6 pb-2 pt-3 active:cursor-grabbing sm:hidden"
           aria-label="Drag to close settings"
         >
-          <div className="h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          <div className="size-10 rounded-full bg-zinc-200 dark:bg-zinc-800" />
         </div>
         <div className="flex items-start gap-3 border-b border-zinc-200 px-5 pb-4 pt-1 sm:pt-5 dark:border-zinc-800">
           <div className="min-w-0 flex-1 pt-0.5">
@@ -100,7 +100,7 @@ export function ReaderSettings({
             className="control-button size-9"
             aria-label="Close settings"
           >
-            <X className="h-4 w-4" strokeWidth={2} />
+            <X className="size-4" strokeWidth={2} />
           </button>
         </div>
 

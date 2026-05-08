@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer } from 'react'
 import { BookOpen, Plus } from 'lucide-react'
 import type { Book } from '../types'
 
@@ -16,6 +16,20 @@ const STAGGER_BASE_MS = 60
 const STAGGER_MAX_MS = 280
 const EXIT_MS = 200
 
+type PresenceState = { mounted: boolean; closing: boolean }
+type PresenceAction = { type: 'open' } | { type: 'close-start' } | { type: 'close-end' }
+
+function presenceReducer(state: PresenceState, action: PresenceAction): PresenceState {
+  switch (action.type) {
+    case 'open':
+      return { mounted: true, closing: false }
+    case 'close-start':
+      return state.mounted ? { mounted: true, closing: true } : state
+    case 'close-end':
+      return { mounted: false, closing: false }
+  }
+}
+
 export function BookLibrary({
   open,
   books,
@@ -24,22 +38,20 @@ export function BookLibrary({
   onAddBook,
   onSelectBook,
 }: Props) {
-  const [mounted, setMounted] = useState(open)
-  const [closing, setClosing] = useState(false)
+  const [{ mounted, closing }, dispatchPresence] = useReducer(presenceReducer, open, (initialOpen) => ({
+    mounted: initialOpen,
+    closing: false,
+  }))
 
   useEffect(() => {
     if (open) {
-      queueMicrotask(() => {
-        setMounted(true)
-        setClosing(false)
-      })
+      queueMicrotask(() => dispatchPresence({ type: 'open' }))
       return
     }
     if (!mounted) return
-    queueMicrotask(() => setClosing(true))
+    queueMicrotask(() => dispatchPresence({ type: 'close-start' }))
     const t = setTimeout(() => {
-      setMounted(false)
-      setClosing(false)
+      dispatchPresence({ type: 'close-end' })
     }, EXIT_MS)
     return () => clearTimeout(t)
   }, [open, mounted])
@@ -51,7 +63,7 @@ export function BookLibrary({
       <button
         type="button"
         aria-label="Close library"
-        className={`absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-black/55 ${
+        className={`absolute inset-0 bg-zinc-950/30 backdrop-blur-sm dark:bg-zinc-950/55 ${
           closing ? 'animate-library-backdrop-out' : 'animate-library-backdrop-in'
         }`}
         onClick={onClose}
@@ -72,7 +84,7 @@ export function BookLibrary({
             onClick={onAddBook}
             className="inline-flex items-center gap-2 rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-(--ease-out-strong) active:scale-[0.96] hoverable:hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-zinc-200"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
             Add EPUB
           </button>
         </div>
@@ -97,7 +109,7 @@ export function BookLibrary({
                     <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">
-                      <BookOpen className="h-10 w-10 text-zinc-500 dark:text-zinc-400" />
+                      <BookOpen className="size-10 text-zinc-500 dark:text-zinc-400" />
                     </div>
                   )}
                 </div>

@@ -191,7 +191,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(() => readStoredPlaybackSpeed(storedSettings))
   const [library, setLibrary] = useState<Book[]>(readStoredLibrary)
-  const [hasLoadedLibraryDb, setHasLoadedLibraryDb] = useState(false)
+  const hasLoadedLibraryDbRef = useRef(false)
   const [activeBookId, setActiveBookId] = useState(() => window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY) ?? library[0]?.id ?? sampleBook.id)
   const [book, setBook] = useState<Book>(() => library.find((candidate) => candidate.id === activeBookId) ?? library[0] ?? sampleBook)
   const initialProgress = progressByBook[book.id] ?? fallbackProgress
@@ -355,7 +355,7 @@ export default function App() {
       })
       .catch((error) => console.warn('Could not load library from browser database.', error))
       .finally(() => {
-        if (!cancelled) setHasLoadedLibraryDb(true)
+        if (!cancelled) hasLoadedLibraryDbRef.current = true
       })
     return () => {
       cancelled = true
@@ -363,14 +363,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!hasLoadedLibraryDb) return
+    if (!hasLoadedLibraryDbRef.current) return
     void writeLibraryToDb(library).catch((error) => console.warn('Could not save library to browser database.', error))
     try {
       window.localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library.filter((storedBook) => storedBook.id === sampleBook.id)))
     } catch {
       // IndexedDB is the durable storage for uploaded EPUBs; localStorage is just a legacy fallback.
     }
-  }, [hasLoadedLibraryDb, library])
+  }, [library])
 
   useEffect(() => {
     writeJson(BOOKMARKS_BY_BOOK_STORAGE_KEY, bookmarksByBook)
@@ -767,7 +767,7 @@ export default function App() {
           className="surface-floating fixed inset-x-0 top-20 z-40 mx-auto flex w-fit animate-(--animate-toast-in) items-center gap-2 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200"
           style={{ transformOrigin: 'top center' }}
         >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-400" />
+          <span className="size-1.5 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-400" />
           Opening EPUB…
         </div>
       )}
@@ -797,22 +797,28 @@ export default function App() {
       </main>
 
       <PlaybackBar
-        isPlaying={isPlaying}
-        onTogglePlay={() => {
-          if (isPlaying) stopPlayback()
-          else startPlayback()
+        playback={{
+          state: isPlaying ? 'playing' : 'paused',
+          buffering: isBuffering,
+          onToggle: () => {
+            if (isPlaying) stopPlayback()
+            else startPlayback()
+          },
         }}
-        isBuffering={isBuffering}
-        canGoBack={navigationHistory.index > 0}
-        onGoBack={goBackInNavigationHistory}
-        canSync={!!currentSentenceId && !isCurrentSentenceVisible}
-        onSync={syncToCurrentSentence}
-        mode={mode}
-        paginationInfo={paginationInfo}
-        scrollProgressInfo={scrollProgressInfo}
-        counterMode={counterMode}
-        onToggleCounterMode={() => setCounterMode((m) => (m === 'chapter' ? 'book' : 'chapter'))}
-        onProgressSeek={seekToProgress}
+        navigation={{
+          canGoBack: navigationHistory.index > 0,
+          onGoBack: goBackInNavigationHistory,
+          canSync: !!currentSentenceId && !isCurrentSentenceVisible,
+          onSync: syncToCurrentSentence,
+        }}
+        progress={{
+          mode,
+          paginationInfo,
+          scrollProgressInfo,
+          counterMode,
+          onToggleCounterMode: () => setCounterMode((m) => (m === 'chapter' ? 'book' : 'chapter')),
+          onSeek: seekToProgress,
+        }}
       />
 
       <BookLibrary

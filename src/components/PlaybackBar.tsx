@@ -3,39 +3,40 @@ import { useEffect, useRef, useState } from 'react'
 import { CornerUpLeft, Pause, Play } from 'lucide-react'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
-type Props = {
-  isPlaying: boolean
-  onTogglePlay: () => void
-  isBuffering: boolean
+type PlaybackState = 'playing' | 'paused'
+
+type PlaybackControls = {
+  state: PlaybackState
+  buffering: boolean
+  onToggle: () => void
+}
+
+type NavigationControls = {
   canGoBack: boolean
   onGoBack: () => void
   canSync: boolean
   onSync: () => void
+}
+
+type ProgressControls = {
   mode: ReaderMode
   paginationInfo: PaginationInfo | null
   scrollProgressInfo: ScrollProgressInfo | null
   counterMode: CounterMode
   onToggleCounterMode: () => void
-  onProgressSeek: (pct: number) => void
+  onSeek: (pct: number) => void
+}
+
+type Props = {
+  playback: PlaybackControls
+  navigation: NavigationControls
+  progress: ProgressControls
 }
 
 const LIVE_SEEK_INTERVAL_MS = 90
 
-export function PlaybackBar({
-  isPlaying,
-  onTogglePlay,
-  isBuffering,
-  canGoBack,
-  onGoBack,
-  canSync,
-  onSync,
-  mode,
-  paginationInfo,
-  scrollProgressInfo,
-  counterMode,
-  onToggleCounterMode,
-  onProgressSeek,
-}: Props) {
+export function PlaybackBar({ playback, navigation, progress }: Props) {
+  const isPlaying = playback.state === 'playing'
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export function PlaybackBar({
         <div className="flex items-center gap-2 sm:contents">
           <button
             type="button"
-            onClick={onTogglePlay}
+            onClick={playback.onToggle}
             className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
@@ -74,8 +75,8 @@ export function PlaybackBar({
 
           <button
             type="button"
-            onClick={onGoBack}
-            disabled={!canGoBack}
+            onClick={navigation.onGoBack}
+            disabled={!navigation.canGoBack}
             className="control-button size-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
             aria-label="Go back to previous reading location"
             title="Go back"
@@ -83,10 +84,10 @@ export function PlaybackBar({
             <CornerUpLeft className="size-[18px]" strokeWidth={2} />
           </button>
 
-          {canSync && (
+          {navigation.canSync && (
             <button
               type="button"
-              onClick={onSync}
+              onClick={navigation.onSync}
               className="ml-auto h-9 rounded-full border border-zinc-200/80 px-3 text-[10px] font-semibold tracking-[0.12em] text-zinc-800 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] sm:hidden dark:border-zinc-800 dark:text-zinc-100"
               aria-label="Sync to current sentence"
             >
@@ -95,10 +96,10 @@ export function PlaybackBar({
           )}
         </div>
 
-        {canSync && (
+        {navigation.canSync && (
           <button
             type="button"
-            onClick={onSync}
+            onClick={navigation.onSync}
             className="hidden shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:block dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
             aria-label="Sync to current sentence"
           >
@@ -106,7 +107,7 @@ export function PlaybackBar({
           </button>
         )}
 
-        {isBuffering && (
+        {playback.buffering && (
           <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-900 dark:text-zinc-400" aria-live="polite">
             <span className="size-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
             Buffering
@@ -114,12 +115,12 @@ export function PlaybackBar({
         )}
 
         <ReaderProgress
-          mode={mode}
-          paginationInfo={paginationInfo}
-          scrollProgressInfo={scrollProgressInfo}
-          counterMode={counterMode}
-          onToggleCounterMode={onToggleCounterMode}
-          onProgressSeek={onProgressSeek}
+          mode={progress.mode}
+          paginationInfo={progress.paginationInfo}
+          scrollProgressInfo={progress.scrollProgressInfo}
+          counterMode={progress.counterMode}
+          onToggleCounterMode={progress.onToggleCounterMode}
+          onProgressSeek={progress.onSeek}
           className="order-2 sm:order-none"
         />
       </div>
@@ -236,7 +237,7 @@ function ReaderProgress({
           />
           <span
             className={
-              'absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 ' +
+              'absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 ' +
               'shadow-[0_1px_5px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ' +
               'dark:bg-zinc-100 dark:shadow-[0_1px_8px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.2)] ' +
               'transition-[opacity,transform] duration-200 ease-(--ease-out-strong) ' +

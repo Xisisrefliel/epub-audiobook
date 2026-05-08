@@ -17,13 +17,12 @@ function getInviteCode() {
 }
 
 function parseCookies(request: Request) {
-  return Object.fromEntries(
-    (request.headers.get('Cookie') ?? '')
-      .split(';')
-      .map((part) => part.trim().split('='))
-      .filter(([key, value]) => key && value)
-      .map(([key, value]) => [key, decodeURIComponent(value)]),
-  )
+  const cookies: Record<string, string> = {}
+  for (const part of (request.headers.get('Cookie') ?? '').split(';')) {
+    const [key, value] = part.trim().split('=')
+    if (key && value) cookies[key] = decodeURIComponent(value)
+  }
+  return cookies
 }
 
 function isAuthenticated(request: Request) {

@@ -34,9 +34,9 @@ export function BookHeader({
           onClick={onOpenLibrary}
           aria-label="Open library"
           title="Open library"
-          className="control-button h-9 w-9 sm:h-9 sm:w-9"
+          className="control-button size-9 sm:h-9 sm:w-9"
         >
-          <Library className="h-[18px] w-[18px]" strokeWidth={2} />
+          <Library className="size-[18px]" strokeWidth={2} />
         </button>
 
         <div className="min-w-0 flex-1">
@@ -55,9 +55,9 @@ export function BookHeader({
           onClick={onOpenToc}
           aria-label="Table of contents"
           title="Table of contents"
-          className="control-button h-9 w-9 sm:h-9 sm:w-9"
+          className="control-button size-9 sm:h-9 sm:w-9"
         >
-          <List className="h-[18px] w-[18px]" strokeWidth={2} />
+          <List className="size-[18px]" strokeWidth={2} />
         </button>
 
         <button
@@ -65,18 +65,18 @@ export function BookHeader({
           onClick={onOpenBookmarks}
           aria-label="Bookmarks"
           title="Bookmarks"
-          className="control-button h-9 w-9 sm:h-9 sm:w-9"
+          className="control-button size-9 sm:h-9 sm:w-9"
         >
-          <Bookmark className="h-[18px] w-[18px]" strokeWidth={2} />
+          <Bookmark className="size-[18px]" strokeWidth={2} />
         </button>
 
         <button
           type="button"
           onClick={onOpenSettings}
           aria-label="Reader settings"
-          className="control-button h-9 w-9 sm:h-9 sm:w-9"
+          className="control-button size-9 sm:h-9 sm:w-9"
         >
-          <Settings className="h-[18px] w-[18px]" strokeWidth={2} />
+          <Settings className="size-[18px]" strokeWidth={2} />
         </button>
       </div>
     </header>
@@ -92,10 +92,10 @@ function ModeToggle({
 }) {
   const activeIndex = mode === 'scroll' ? 0 : 1
   return (
-    <div className="relative hidden rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-black sm:flex">
+    <div className="relative hidden rounded-full border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium dark:border-zinc-800 dark:bg-zinc-950 sm:flex">
       <span
         aria-hidden
-        className="absolute left-0.5 top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) will-change-transform dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+        className="absolute left-0.5 top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform duration-200 ease-(--ease-out-strong) dark:bg-zinc-900 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
         style={{ transform: `translate3d(${activeIndex * 100}%, 0, 0)` }}
       />
       <ModeButton active={mode === 'scroll'} onClick={() => onChange('scroll')} label="Scroll" />

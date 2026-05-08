@@ -1,3 +1,7 @@
+const sentenceSegmenter = 'Segmenter' in Intl
+  ? new Intl.Segmenter(undefined, { granularity: 'sentence' })
+  : null
+
 export function splitSentences(text: string): string[] {
   const normalized = text
     .replace(/\s+/g, ' ')
@@ -8,15 +12,15 @@ export function splitSentences(text: string): string[] {
     .trim()
   if (!normalized) return []
 
-  if ('Segmenter' in Intl) {
-    const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' })
-    return Array.from(segmenter.segment(normalized))
-      .map((s) => s.segment.trim())
-      .filter(Boolean)
+  if (sentenceSegmenter) {
+    return Array.from(sentenceSegmenter.segment(normalized)).flatMap((s) => {
+      const sentence = s.segment.trim()
+      return sentence ? [sentence] : []
+    })
   }
 
-  return normalized
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
+  return normalized.split(/(?<=[.!?])\s+/).flatMap((s) => {
+    const sentence = s.trim()
+    return sentence ? [sentence] : []
+  })
 }

@@ -33,23 +33,29 @@ export async function loadEpub(file: File): Promise<Book> {
   const metadata = readMetadata(opf)
   const manifest = readManifest(opf)
   const coverUrl = await readCover(zip, opf, opfDir, manifest)
-  const spineIds = Array.from(opf.querySelectorAll('spine itemref'))
-    .filter((item) => item.getAttribute('linear') !== 'no')
-    .map((item) => item.getAttribute('idref'))
-    .filter((id): id is string => Boolean(id))
+  const spineIds: string[] = []
+  for (const item of opf.querySelectorAll('spine itemref')) {
+    const id = item.getAttribute('idref')
+    if (item.getAttribute('linear') !== 'no' && id) spineIds.push(id)
+  }
 
   const spineHrefToChapterIndex = new Map<string, number>()
+  const chapterSources = spineIds.flatMap((id) => {
+    const manifestItem = manifest.get(id)
+    if (!manifestItem || !isDocumentMediaType(manifestItem.mediaType, manifestItem.href)) return []
+    const chapterPath = normalizePath(joinPath(opfDir, manifestItem.href))
+    return [{ manifestItem, chapterPath }]
+  })
+  const chapterDocuments = await Promise.all(
+    chapterSources.map(async ({ manifestItem, chapterPath }) => ({
+      manifestItem,
+      chapterPath,
+      doc: parseContentDocument(parser, await readZipText(zip, chapterPath)),
+    })),
+  )
   const chapters: Chapter[] = []
 
-  for (let i = 0; i < spineIds.length; i++) {
-    const manifestItem = manifest.get(spineIds[i])
-    if (!manifestItem) continue
-    if (!isDocumentMediaType(manifestItem.mediaType, manifestItem.href)) continue
-
-    const chapterPath = normalizePath(joinPath(opfDir, manifestItem.href))
-    const html = await readZipText(zip, chapterPath)
-    const doc = parseContentDocument(parser, html)
-
+  for (const { manifestItem, chapterPath, doc } of chapterDocuments) {
     const chapter = documentToChapter(doc, chapters.length, manifestItem.href)
     if (chapter.paragraphs.length > 0) {
       spineHrefToChapterIndex.set(normalizeHref(manifestItem.href), chapters.length)
@@ -166,22 +172,27 @@ async function readToc(
 }
 
 function parseHtmlTocList(list: Element, hrefToChapterIndex: Map<string, number>): TocItem[] {
-  return Array.from(list.children)
-    .filter((el) => el.tagName.toLowerCase() === 'li')
-    .map((li, index) => {
-      const anchor = li.querySelector(':scope > a, :scope > span')
-      const href = anchor?.getAttribute('href') ?? ''
-      const nested = li.querySelector(':scope > ol, :scope > ul')
-      const children = nested ? parseHtmlTocList(nested, hrefToChapterIndex) : []
-      const chapterIndex = chapterIndexForHref(href, hrefToChapterIndex) ?? children[0]?.chapterIndex ?? 0
-      return {
+  const items: TocItem[] = []
+  let index = 0
+  for (const li of list.children) {
+    if (li.tagName.toLowerCase() !== 'li') continue
+    const anchor = li.querySelector(':scope > a, :scope > span')
+    const href = anchor?.getAttribute('href') ?? ''
+    const nested = li.querySelector(':scope > ol, :scope > ul')
+    const children = nested ? parseHtmlTocList(nested, hrefToChapterIndex) : []
+    const chapterIndex = chapterIndexForHref(href, hrefToChapterIndex) ?? children[0]?.chapterIndex ?? 0
+    const label = anchor?.textContent?.replace(/\s+/g, ' ').trim() || `Chapter ${chapterIndex + 1}`
+    if (label) {
+      items.push({
         id: `toc-html-${chapterIndex}-${index}-${stableId(anchor?.textContent ?? href)}`,
-        label: anchor?.textContent?.replace(/\s+/g, ' ').trim() || `Chapter ${chapterIndex + 1}`,
+        label,
         chapterIndex,
         children: children.length > 0 ? children : undefined,
-      }
-    })
-    .filter((item) => item.label)
+      })
+    }
+    index++
+  }
+  return items
 }
 
 function parseNcxToc(points: Element[], hrefToChapterIndex: Map<string, number>): TocItem[] {

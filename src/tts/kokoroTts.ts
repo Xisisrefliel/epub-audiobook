@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 
-export type KokoroVoice = 'af_bella' | string
-export type KokoroFormat = 'mp3' | 'opus' | 'flac' | 'wav' | 'pcm'
+type KokoroVoice = 'af_bella' | string
+type KokoroFormat = 'mp3' | 'opus' | 'flac' | 'wav' | 'pcm'
 
 export type TtsConfig = {
   model: string
@@ -11,7 +11,7 @@ export type TtsConfig = {
   serviceTier?: 'default' | 'priority'
 }
 
-export type TtsWord = {
+type TtsWord = {
   id?: number
   start: number
   end: number
@@ -39,11 +39,7 @@ export const defaultTtsConfig: TtsConfig = {
   serviceTier: 'default',
 }
 
-export class TtsConfigError extends Error {
-  readonly _tag = 'TtsConfigError'
-}
-
-export class TtsHttpError extends Error {
+class TtsHttpError extends Error {
   readonly _tag = 'TtsHttpError'
   readonly status: number
   constructor(status: number, message: string) {
@@ -52,11 +48,11 @@ export class TtsHttpError extends Error {
   }
 }
 
-export class TtsNetworkError extends Error {
+class TtsNetworkError extends Error {
   readonly _tag = 'TtsNetworkError'
 }
 
-export function makeTtsKey(sentenceId: string, text: string, config: TtsConfig) {
+function makeTtsKey(sentenceId: string, text: string, config: TtsConfig) {
   return [config.model, config.voice, config.format, config.speed, sentenceId, hashText(text)].join(':')
 }
 

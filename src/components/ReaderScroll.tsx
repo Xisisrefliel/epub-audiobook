@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Bookmark } from 'lucide-react'
 import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
 import { getChapterDisplayTitle } from '../utils/chapterTitle'
@@ -182,9 +182,11 @@ export function ReaderScroll({
     handledScrollRequestRef.current = null
   }, [book])
 
+  const notifyCurrentSentenceVisibility = useEffectEvent(onCurrentSentenceVisibilityChange)
+
   useEffect(() => {
     if (!currentSentenceId) {
-      onCurrentSentenceVisibilityChange(false)
+      notifyCurrentSentenceVisibility(false)
       return
     }
 
@@ -199,7 +201,7 @@ export function ReaderScroll({
       })
       if (visible !== lastVisible) {
         lastVisible = visible
-        onCurrentSentenceVisibilityChange(visible)
+        notifyCurrentSentenceVisibility(visible)
       }
     }
     const schedule = () => {
@@ -215,7 +217,7 @@ export function ReaderScroll({
       window.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
     }
-  }, [currentSentenceId, lines, onCurrentSentenceVisibilityChange])
+  }, [currentSentenceId, lines])
 
   useEffect(() => {
     if (!linesReady || !scrollRequest) return
@@ -243,7 +245,11 @@ export function ReaderScroll({
             const end = Number(span.dataset.sentenceEnd)
             return Number.isFinite(start) && Number.isFinite(end) && offset >= start && offset < end
           })
-      const rects = (targets.length ? targets : spans).map((target) => target.getBoundingClientRect()).filter((rect) => rect.height > 0)
+      const rects: DOMRect[] = []
+      for (const target of targets.length ? targets : spans) {
+        const rect = target.getBoundingClientRect()
+        if (rect.height > 0) rects.push(rect)
+      }
       if (!rects.length) return false
       const first = rects[0]
       const last = rects.at(-1) ?? first
@@ -300,6 +306,8 @@ export function ReaderScroll({
     }
   }, [book, lineHeightPx, lineOffsets, lines, linesReady, scrollRequest, sentenceLineIndex] )
 
+  const notifyLocationChange = useEffectEvent(onLocationChange)
+
   useEffect(() => {
     if (!articleRef.current) return
     let frame = 0
@@ -329,7 +337,7 @@ export function ReaderScroll({
       const id = sentence?.dataset.sid ?? null
       if (id && id !== lastId) {
         lastId = id
-        onLocationChange(id)
+        notifyLocationChange(id)
       }
     }
 
@@ -362,7 +370,7 @@ export function ReaderScroll({
       window.removeEventListener('resize', schedule)
       window.removeEventListener('resize', scheduleViewport)
     }
-  }, [lines, locationSentenceId, onLocationChange])
+  }, [lines, locationSentenceId])
 
   return (
     <div className="px-4 pb-52 pt-24 sm:px-6 sm:pb-40">
@@ -418,7 +426,7 @@ export function ReaderScroll({
               <div
                 className={
                   'group/line relative ' +
-                  (line.endsParagraph ? 'whitespace-nowrap' : 'whitespace-nowrap text-justify [text-align-last:justify]')
+                  'whitespace-nowrap'
                 }
                 style={{ marginTop: li > 0 && line.startsParagraph && !line.startsChapter ? `${fontSize * lineHeight}px` : undefined }}
               >
@@ -522,14 +530,14 @@ function BookmarkButton({
       }}
       onKeyDown={(event) => event.stopPropagation()}
       className={
-        'absolute -left-7 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 ' +
+        'absolute -left-7 top-1/2 hidden size-6 -translate-y-1/2 items-center justify-center rounded-full transition-[opacity,color,transform] duration-200 ease-(--ease-out-strong) hoverable:flex hoverable:group-hover/line:opacity-70 hoverable:hover:scale-105 hoverable:hover:opacity-100 ' +
         (isBookmarked
           ? 'text-rose-900 opacity-90 dark:text-rose-300'
           : 'text-zinc-500 opacity-0 dark:text-zinc-500')
       }
     >
       <Bookmark
-        className="h-4 w-4"
+        className="size-4"
         strokeWidth={1.8}
         fill={isBookmarked ? 'currentColor' : 'none'}
       />

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useReducer, type RefObject } from 'react'
+import { getWordBandHeight } from './highlightGeometry'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -35,12 +36,12 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
       range.detach()
       const targetRect = textRects[0] ?? target.getBoundingClientRect()
       const fontSize = Number.parseFloat(window.getComputedStyle(target).fontSize) || targetRect.height
-      const verticalInset = fontSize * 0.08
+      const height = getWordBandHeight(fontSize, targetRect.height)
       dispatchRect({
-        top: targetRect.top - articleRect.top + verticalInset,
+        top: targetRect.top - articleRect.top + (targetRect.height - height) / 2,
         left: targetRect.left - articleRect.left,
         width: targetRect.width,
-        height: Math.min(fontSize * 1.18, Math.max(fontSize, targetRect.height - verticalInset * 2)),
+        height,
       })
     }
 
@@ -58,7 +59,7 @@ export function WordHighlight({ activeKey, articleRef }: Props) {
     <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
       {rect && (
         <div
-          className="absolute rounded-[0.22em] bg-zinc-950/14 shadow-[0_0_0_1px_rgba(24,24,27,0.08)_inset] dark:bg-white/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset]"
+          className="absolute rounded-[0.18em] bg-zinc-950/16 shadow-[0_0_0_1px_rgba(24,24,27,0.08)_inset] dark:bg-white/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset]"
           style={{
             transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
             width: rect.width,

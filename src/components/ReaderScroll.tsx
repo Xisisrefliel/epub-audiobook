@@ -5,6 +5,7 @@ import { getChapterDisplayTitle } from '../utils/chapterTitle'
 import { getParagraphText, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
 import { SentenceHighlight } from './SentenceHighlight'
 import { WordHighlight } from './WordHighlight'
+import { HighlightedText } from './readerHighlights'
 
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 const LONG_PRESS_BOOKMARK_MS = 520
@@ -488,11 +489,10 @@ export function ReaderScroll({
                       className={
                         'sentence-press-feedback rounded-sm box-decoration-clone ' +
                         (pi === 0 ? 'sentence-line-start ' : '') +
-                        (isBookmarked ? 'bookmark-text-highlight ' : '') +
-                        (isActive && isBookmarked ? 'active-bookmark-cue' : '')
+                        ''
                       }
                     >
-                      <HighlightedText part={part} activeWord={activeWord} />
+                      <HighlightedText part={part} activeWord={activeWord} isBookmarked={isBookmarked} isActive={isActive} />
                     </span>
                     </span>
                   </Fragment>
@@ -553,44 +553,6 @@ function setPressFeedback(sentenceId: string, pressing: boolean) {
   document
     .querySelectorAll<HTMLElement>(`[data-sid="${CSS.escape(sentenceId)}"] .sentence-press-feedback`)
     .forEach((el) => el.classList.toggle('is-pressing', pressing))
-}
-
-function HighlightedText({ part, activeWord }: { part: TextPart; activeWord: ActiveWord | null }) {
-  const match = activeWord?.sentenceId === part.id ? findActiveWordMatch(part, activeWord) : null
-  if (!match) return part.text
-  return (
-    <>
-      {part.text.slice(0, match.start)}
-      <mark
-        data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
-        className="rounded-[0.2em] bg-transparent px-0.5 text-inherit"
-      >
-        {part.text.slice(match.start, match.end)}
-      </mark>
-      {part.text.slice(match.end)}
-    </>
-  )
-}
-
-function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
-  const target = normalizeWord(activeWord.text)
-  if (!target) return null
-  const matches = Array.from(part.sentenceText.matchAll(/[\p{L}\p{N}]+/gu))
-  const sameWordMatches = matches.filter((match) => normalizeWord(match[0]) === target)
-  const sentenceMatch = sameWordMatches[activeWord.occurrence]
-  if (!sentenceMatch || sentenceMatch.index === undefined) return null
-  const start = sentenceMatch.index - part.sentenceOffset
-  let end = start + sentenceMatch[0].length
-  if (activeWord.isPunctuationPause) {
-    const trailing = part.sentenceText.slice(sentenceMatch.index + sentenceMatch[0].length).match(/^[\s,;:–—-]+/u)
-    end += trailing?.[0]?.length ?? 0
-  }
-  if (end <= 0 || start >= part.text.length) return null
-  return { start: Math.max(0, start), end: Math.min(part.text.length, end) }
-}
-
-function normalizeWord(value: string) {
-  return value.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
 }
 
 function prefersReducedMotion() {

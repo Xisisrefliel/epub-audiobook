@@ -1,4 +1,5 @@
 import { useLayoutEffect, useReducer, type RefObject } from 'react'
+import { getSentenceBandHeight } from './highlightGeometry'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -55,7 +56,6 @@ export function SentenceHighlight({
         return
       }
       const articleRect = article.getBoundingClientRect()
-      const bandHeight = fontSize * 1.18
       const horizontalOutset = fontSize * 0.12
       const next = spans.flatMap((span) => {
         const textRoot = span.querySelector<HTMLElement>('.sentence-press-feedback') ?? span
@@ -67,7 +67,7 @@ export function SentenceHighlight({
         // look like it floats above punctuation/quotes on short lines.
         const r = textRoot.getBoundingClientRect()
         if (r.width <= 0 || r.height <= 0) return []
-        const height = Math.min(bandHeight, Math.max(fontSize, r.height))
+        const height = getSentenceBandHeight(fontSize, r.height)
         return [{
           top: r.top - articleRect.top + (r.height - height) / 2,
           left: r.left - articleRect.left - horizontalOutset,

@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 
 type KokoroVoice = 'af_bella' | string
 type KokoroFormat = 'mp3' | 'opus' | 'flac' | 'wav' | 'pcm'
@@ -25,11 +25,19 @@ export type TtsAudio = {
   words: TtsWord[]
 }
 
-type CacheEntry =
-  | { status: 'ready'; audio: TtsAudio }
-  | { status: 'pending'; promise: Promise<TtsAudio> }
+export class TtsHttpError extends Data.TaggedError('TtsHttpError')<{
+  readonly status: number
+  readonly message: string
+}> {}
 
-const audioCache = new Map<string, CacheEntry>()
+export class TtsNetworkError extends Data.TaggedError('TtsNetworkError')<{
+  readonly message: string
+}> {}
+
+export type TtsError = TtsHttpError | TtsNetworkError
+
+const readyCache = new Map<string, TtsAudio>()
+const inflight = new Map<string, Effect.Effect<TtsAudio, TtsError>>()
 
 export const defaultTtsConfig: TtsConfig = {
   model: 'hexgrad/Kokoro-82M',
@@ -39,17 +47,13 @@ export const defaultTtsConfig: TtsConfig = {
   serviceTier: 'default',
 }
 
-class TtsHttpError extends Error {
-  readonly _tag = 'TtsHttpError'
-  readonly status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
+export function ttsErrorMessage(error: TtsError): string {
+  switch (error._tag) {
+    case 'TtsHttpError':
+      return `Speech failed (${error.status}). ${error.message}`
+    case 'TtsNetworkError':
+      return error.message || 'Could not reach the speech service.'
   }
-}
-
-class TtsNetworkError extends Error {
-  readonly _tag = 'TtsNetworkError'
 }
 
 function makeTtsKey(sentenceId: string, text: string, config: TtsConfig) {
@@ -61,18 +65,21 @@ export function getSpeechAudio(
   text: string,
   config: TtsConfig = defaultTtsConfig,
   options: { signal?: AbortSignal } = {},
-) {
+): Effect.Effect<TtsAudio, TtsError> {
   const key = makeTtsKey(sentenceId, text, config)
-  const cached = audioCache.get(key)
-  if (cached?.status === 'ready') return Effect.succeed(cached.audio)
-  if (cached?.status === 'pending') return Effect.tryPromise(() => cached.promise)
+  const ready = readyCache.get(key)
+  if (ready) return Effect.succeed(ready)
 
-  const promise = Effect.runPromise(generateSpeech(key, text, config, options.signal))
-  audioCache.set(key, { status: 'pending', promise })
-  return Effect.tryPromise(() => promise).pipe(
-    Effect.tap((audio) => Effect.sync(() => audioCache.set(key, { status: 'ready', audio }))),
-    Effect.tapError(() => Effect.sync(() => audioCache.delete(key))),
-  )
+  let effect = inflight.get(key)
+  if (!effect) {
+    effect = generateSpeech(key, text, config, options.signal).pipe(
+      Effect.tap((audio) => Effect.sync(() => readyCache.set(key, audio))),
+      Effect.ensuring(Effect.sync(() => inflight.delete(key))),
+    )
+    inflight.set(key, effect)
+  }
+
+  return effect
 }
 
 export function prefetchSpeech(
@@ -104,19 +111,25 @@ function generateSpeech(key: string, text: string, config: TtsConfig, signal?: A
             stream: false,
           }),
         }),
-      catch: (error) => new TtsNetworkError(error instanceof Error ? error.message : 'TTS network error'),
+      catch: (error) =>
+        new TtsNetworkError({
+          message: error instanceof Error ? error.message : 'TTS network error',
+        }),
     })
 
     if (!response.ok) {
       const message = yield* Effect.tryPromise(() => response.text()).pipe(
         Effect.catchAll(() => Effect.succeed(response.statusText)),
       )
-      return yield* Effect.fail(new TtsHttpError(response.status, message))
+      return yield* Effect.fail(new TtsHttpError({ status: response.status, message }))
     }
 
     const json = yield* Effect.tryPromise({
       try: () => response.json() as Promise<{ audio: string; words?: TtsWord[]; output_format?: string }>,
-      catch: (error) => new TtsNetworkError(error instanceof Error ? error.message : 'Could not read TTS response'),
+      catch: (error) =>
+        new TtsNetworkError({
+          message: error instanceof Error ? error.message : 'Could not read TTS response',
+        }),
     })
     const blob = audioStringToBlob(json.audio, config.format)
     return { key, blob, url: URL.createObjectURL(blob), words: json.words ?? [] }

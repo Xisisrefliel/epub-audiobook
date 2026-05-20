@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Effect } from 'effect'
 import { BookHeader } from './components/BookHeader'
 import { Reader } from './components/Reader'
@@ -9,7 +9,7 @@ import { BookmarksMenu, type BookmarkMenuItem } from './components/BookmarksMenu
 import { BookLibrary } from './components/BookLibrary'
 import { sampleBook } from './data/sampleChapter'
 import { loadEpub } from './epub/loadEpub'
-import { defaultTtsConfig, getSpeechAudio, prefetchSpeech } from './tts/kokoroTts'
+import { defaultTtsConfig, getSpeechAudio, prefetchSpeech, ttsErrorMessage } from './tts/kokoroTts'
 import type { TtsAudio } from './tts/kokoroTts'
 import { getChapterDisplayTitle } from './utils/chapterTitle'
 import { usePlaybackFlags } from './hooks/usePlaybackFlags'
@@ -257,6 +257,13 @@ export default function App() {
     isCurrentSentenceVisible,
     setIsCurrentSentenceVisible,
   } = usePlaybackFlags()
+  const [ttsError, setTtsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ttsError) return
+    const timer = window.setTimeout(() => setTtsError(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [ttsError])
 
   useTheme(theme)
 
@@ -588,14 +595,32 @@ export default function App() {
     const bufferingTimer = window.setTimeout(() => {
       if (playbackRunRef.current === runId) setIsBuffering(true)
     }, BUFFERING_DELAY_MS)
-    let audio: TtsAudio
+    let audio: TtsAudio | null = null
     try {
-      audio = await Effect.runPromise(getSpeechAudio(sentence.id, sentence.text, defaultTtsConfig))
+      audio = await getSpeechAudio(sentence.id, sentence.text, defaultTtsConfig).pipe(
+        Effect.catchTags({
+          TtsHttpError: (error) =>
+            Effect.sync(() => {
+              setTtsError(ttsErrorMessage(error))
+              return null
+            }),
+          TtsNetworkError: (error) =>
+            Effect.sync(() => {
+              setTtsError(ttsErrorMessage(error))
+              return null
+            }),
+        }),
+        Effect.runPromise,
+      )
     } finally {
       window.clearTimeout(bufferingTimer)
       if (playbackRunRef.current === runId) setIsBuffering(false)
     }
     if (playbackRunRef.current !== runId) return
+    if (!audio) {
+      setIsPlaying(false)
+      return
+    }
 
     audioRef.current?.pause()
     const element = new Audio(audio.url)
@@ -793,6 +818,17 @@ export default function App() {
         >
           <span className="size-1.5 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-400" />
           Opening EPUB…
+        </div>
+      )}
+
+      {ttsError && (
+        <div
+          role="alert"
+          className="surface-floating fixed inset-x-0 top-20 z-40 mx-auto flex w-fit max-w-[min(24rem,calc(100vw-2rem))] animate-(--animate-toast-in) items-center gap-2 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200"
+          style={{ transformOrigin: 'top center' }}
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-red-500/80 dark:bg-red-400/80" />
+          {ttsError}
         </div>
       )}
 

@@ -120,6 +120,7 @@ export async function buildScrollLinesAsync(
   fontSize: number,
   lineHeight: number,
   isCancelled: () => boolean,
+  onProgress?: (lines: ScrollLineFragment[]) => void,
 ) {
   const key = scrollLayoutKey(contentWidth, fontSize, lineHeight)
   const cached = getCachedScrollLines(book, contentWidth, fontSize, lineHeight)
@@ -129,6 +130,7 @@ export async function buildScrollLinesAsync(
   for (let chapterIndex = 0; chapterIndex < book.chapters.length; chapterIndex++) {
     if (isCancelled()) return null
     flat.push(...layoutChapterScrollLines(book, chapterIndex, contentWidth, fontSize, lineHeight))
+    onProgress?.(flat.slice())
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import type { Book } from '../types'
 import {
   buildScrollLinesAsync,
@@ -36,9 +36,17 @@ export function useScrollLinesLayout({ book, contentWidth, fontSize, lineHeight 
 
     let cancelled = false
 
-    void buildScrollLinesAsync(book, contentWidth, fontSize, lineHeight, () => cancelled).then((lines) => {
+    const publish = (lines: ScrollLineFragment[]) => {
+      startTransition(() => {
+        setSnapshot({ lines, fontSize, lineHeight })
+      })
+    }
+
+    void buildScrollLinesAsync(book, contentWidth, fontSize, lineHeight, () => cancelled, (lines) => {
+      if (!cancelled) publish(lines)
+    }).then((lines) => {
       if (!lines || cancelled) return
-      setSnapshot({ lines, fontSize, lineHeight })
+      publish(lines)
     })
 
     return () => {

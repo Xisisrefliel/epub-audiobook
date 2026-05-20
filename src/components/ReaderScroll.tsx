@@ -400,6 +400,18 @@ export function ReaderScroll({
         />
 
         <div className="relative z-10">
+          {!linesReady && (
+            <div
+              role="status"
+              className="mx-auto mt-[22vh] max-w-sm animate-(--animate-toast-in) text-center"
+            >
+              <div className="mx-auto mb-4 size-2 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Preparing scroll view…</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-500 dark:text-zinc-500">
+                Measuring the first chapter so you can start reading before the whole book is laid out.
+              </p>
+            </div>
+          )}
           <div style={{ height: virtual.top }} />
           {virtual.lines.map((line, offset) => {
             const li = virtual.start + offset

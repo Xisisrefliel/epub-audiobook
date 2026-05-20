@@ -7,6 +7,7 @@ import { ReaderSettings } from './components/ReaderSettings'
 import { TableOfContents } from './components/TableOfContents'
 import { BookmarksMenu, type BookmarkMenuItem } from './components/BookmarksMenu'
 import { BookLibrary } from './components/BookLibrary'
+import { BookLoadingView } from './components/BookLoadingView'
 import { sampleBook } from './data/sampleChapter'
 import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech, ttsErrorMessage } from './tts/kokoroTts'
@@ -732,6 +733,7 @@ export default function App() {
   const handleOpenEpub = async (file: File | undefined) => {
     if (!file) return
     setIsLoadingBook(true)
+    closeOverlay('library')
     try {
       const nextBook = await loadEpub(file)
       if (nextBook.chapters.length === 0) {
@@ -741,7 +743,6 @@ export default function App() {
       setLibrary((books) => [nextBook, ...books.filter((book) => book.id !== nextBook.id)])
       setActiveBookId(nextBook.id)
       setBook(nextBook)
-      closeOverlay('library')
       setChapterIndex(0)
       setCurrentSentenceId(null)
       setNavigationHistory({ entries: [], index: -1 })
@@ -788,38 +789,40 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
-      <BookHeader
-        book={book}
-        chapter={chapter}
-        mode={mode}
-        onModeChange={setMode}
-        onOpenLibrary={() => {
-          closeOverlay('toc')
-          closeOverlay('bookmarks')
-          closeOverlay('settings')
-          openOverlay('library')
-        }}
-        onOpenToc={() => {
-          closeOverlay('library')
-          closeOverlay('bookmarks')
-          closeOverlay('settings')
-          openOverlay('toc')
-        }}
-        onOpenBookmarks={() => {
-          closeOverlay('library')
-          closeOverlay('toc')
-          closeOverlay('settings')
-          openOverlay('bookmarks')
-        }}
-        onOpenSettings={() => {
-          closeOverlay('library')
-          closeOverlay('toc')
-          closeOverlay('bookmarks')
-          setReaderTypography({ fontSize, lineHeight, measure })
-          setSettingsSession((session) => session + 1)
-          openOverlay('settings')
-        }}
-      />
+      {!isLoadingBook && (
+        <BookHeader
+          book={book}
+          chapter={chapter}
+          mode={mode}
+          onModeChange={setMode}
+          onOpenLibrary={() => {
+            closeOverlay('toc')
+            closeOverlay('bookmarks')
+            closeOverlay('settings')
+            openOverlay('library')
+          }}
+          onOpenToc={() => {
+            closeOverlay('library')
+            closeOverlay('bookmarks')
+            closeOverlay('settings')
+            openOverlay('toc')
+          }}
+          onOpenBookmarks={() => {
+            closeOverlay('library')
+            closeOverlay('toc')
+            closeOverlay('settings')
+            openOverlay('bookmarks')
+          }}
+          onOpenSettings={() => {
+            closeOverlay('library')
+            closeOverlay('toc')
+            closeOverlay('bookmarks')
+            setReaderTypography({ fontSize, lineHeight, measure })
+            setSettingsSession((session) => session + 1)
+            openOverlay('settings')
+          }}
+        />
+      )}
 
       <input
         ref={fileInputRef}
@@ -828,17 +831,6 @@ export default function App() {
         className="hidden"
         onChange={(e) => handleOpenEpub(e.currentTarget.files?.[0])}
       />
-
-      {isLoadingBook && (
-        <div
-          role="status"
-          className="surface-floating fixed inset-x-0 top-20 z-40 mx-auto flex w-fit animate-(--animate-toast-in) items-center gap-2 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200"
-          style={{ transformOrigin: 'top center' }}
-        >
-          <span className="size-1.5 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-400" />
-          Opening EPUB…
-        </div>
-      )}
 
       {ttsError && (
         <div
@@ -852,57 +844,63 @@ export default function App() {
       )}
 
       <main>
-        <Reader
-          book={book}
-          chapterIndex={chapterIndex}
-          onChapterChange={changeChapter}
-          mode={mode}
-          fontSize={readerFontSize}
-          lineHeight={readerLineHeight}
-          measure={readerMeasure}
-          currentSentenceId={currentSentenceId}
-          locationSentenceId={locationSentenceId}
-          activeWord={activeWord}
-          bookmarkBySentenceId={bookmarkBySentenceId}
-          onSentenceSelect={(id) => selectSentence(id, { recordHistory: true })}
-          onBookmarkToggle={toggleBookmark}
-          onLocationChange={setLocationSentenceId}
-          onPaginationChange={setPaginationInfo}
-          onBookmarkPagesChange={updateBookmarkPages}
-          scrollRequest={scrollRequest}
-          syncKey={syncKey}
-          onCurrentSentenceVisibilityChange={setIsCurrentSentenceVisible}
-        />
+        {isLoadingBook ? (
+          <BookLoadingView />
+        ) : (
+          <Reader
+            book={book}
+            chapterIndex={chapterIndex}
+            onChapterChange={changeChapter}
+            mode={mode}
+            fontSize={readerFontSize}
+            lineHeight={readerLineHeight}
+            measure={readerMeasure}
+            currentSentenceId={currentSentenceId}
+            locationSentenceId={locationSentenceId}
+            activeWord={activeWord}
+            bookmarkBySentenceId={bookmarkBySentenceId}
+            onSentenceSelect={(id) => selectSentence(id, { recordHistory: true })}
+            onBookmarkToggle={toggleBookmark}
+            onLocationChange={setLocationSentenceId}
+            onPaginationChange={setPaginationInfo}
+            onBookmarkPagesChange={updateBookmarkPages}
+            scrollRequest={scrollRequest}
+            syncKey={syncKey}
+            onCurrentSentenceVisibilityChange={setIsCurrentSentenceVisible}
+          />
+        )}
       </main>
 
-      <PlaybackBar
-        playback={{
-          state: isPlaying ? 'playing' : 'paused',
-          buffering: isBuffering,
-          canSkipBackward: activeSentenceIndex !== undefined && activeSentenceIndex > 0,
-          canSkipForward: activeSentenceIndex !== undefined && activeSentenceIndex < sentences.length - 1,
-          onToggle: () => {
-            if (isPlaying) stopPlayback()
-            else startPlayback()
-          },
-          onSkipBackward: () => skipSentence(-1),
-          onSkipForward: () => skipSentence(1),
-        }}
-        navigation={{
-          canGoBack: navigationHistory.index > 0,
-          onGoBack: goBackInNavigationHistory,
-          canSync: !!currentSentenceId && !isCurrentSentenceVisible,
-          onSync: syncToCurrentSentence,
-        }}
-        progress={{
-          mode,
-          paginationInfo,
-          scrollProgressInfo,
-          counterMode,
-          onToggleCounterMode: () => setCounterMode((m) => (m === 'chapter' ? 'book' : 'chapter')),
-          onSeek: seekToProgress,
-        }}
-      />
+      {!isLoadingBook && (
+        <PlaybackBar
+          playback={{
+            state: isPlaying ? 'playing' : 'paused',
+            buffering: isBuffering,
+            canSkipBackward: activeSentenceIndex !== undefined && activeSentenceIndex > 0,
+            canSkipForward: activeSentenceIndex !== undefined && activeSentenceIndex < sentences.length - 1,
+            onToggle: () => {
+              if (isPlaying) stopPlayback()
+              else startPlayback()
+            },
+            onSkipBackward: () => skipSentence(-1),
+            onSkipForward: () => skipSentence(1),
+          }}
+          navigation={{
+            canGoBack: navigationHistory.index > 0,
+            onGoBack: goBackInNavigationHistory,
+            canSync: !!currentSentenceId && !isCurrentSentenceVisible,
+            onSync: syncToCurrentSentence,
+          }}
+          progress={{
+            mode,
+            paginationInfo,
+            scrollProgressInfo,
+            counterMode,
+            onToggleCounterMode: () => setCounterMode((m) => (m === 'chapter' ? 'book' : 'chapter')),
+            onSeek: seekToProgress,
+          }}
+        />
+      )}
 
       <BookLibrary
         open={libraryOpen}

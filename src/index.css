@@ -170,6 +170,28 @@
   }
 }
 
+@keyframes page-turn {
+  0%,
+  18% {
+    transform: perspective(170px) rotateY(0deg);
+  }
+  54% {
+    transform: perspective(170px) rotateY(-52deg);
+  }
+  100% {
+    transform: perspective(170px) rotateY(0deg);
+  }
+}
+
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
 @keyframes page-content-in {
   from {
     opacity: 0.72;

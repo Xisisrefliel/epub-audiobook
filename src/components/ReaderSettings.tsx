@@ -1,6 +1,17 @@
+import { useCallback, useState } from 'react'
 import { X } from 'lucide-react'
 import { useBottomSheetDrag } from '../hooks/useBottomSheetDrag'
 import type { Theme, ReaderMode } from '../types'
+
+const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
+const PREVIEW_TEXT =
+  'It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness.'
+
+type TypographyDraft = {
+  fontSize: number
+  lineHeight: number
+  measure: number
+}
 
 type Props = {
   open: boolean
@@ -35,6 +46,15 @@ export function ReaderSettings({
   speed,
   onSpeedChange,
 }: Props) {
+  const [draft, setDraft] = useState<TypographyDraft>({ fontSize, lineHeight, measure })
+
+  const applyDraftAndClose = useCallback(() => {
+    onFontSizeChange(draft.fontSize)
+    onLineHeightChange(draft.lineHeight)
+    onMeasureChange(draft.measure)
+    onClose()
+  }, [draft, onClose, onFontSizeChange, onLineHeightChange, onMeasureChange])
+
   const {
     shouldRender,
     sheetRef,
@@ -44,7 +64,7 @@ export function ReaderSettings({
     handleProps,
     drawerBackdropClass,
     drawerPanelClass,
-  } = useBottomSheetDrag({ open, onClose })
+  } = useBottomSheetDrag({ open, onClose: applyDraftAndClose })
 
   if (!shouldRender) return null
 
@@ -60,7 +80,7 @@ export function ReaderSettings({
           .join(' ')}
         aria-hidden
         style={backdropStyle}
-        onClick={onClose}
+        onClick={applyDraftAndClose}
       />
       <div
         aria-hidden
@@ -72,7 +92,7 @@ export function ReaderSettings({
         style={sheetStyle}
         {...sheetProps}
         className={[
-          'relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950',
+          'relative max-h-[88dvh] w-full overflow-y-auto rounded-t-3xl border-t border-zinc-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-xs sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 dark:border-zinc-800 dark:bg-zinc-950',
           drawerPanelClass,
         ]
           .filter(Boolean)
@@ -96,7 +116,7 @@ export function ReaderSettings({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={applyDraftAndClose}
             className="control-button size-9"
             aria-label="Close settings"
           >
@@ -104,7 +124,43 @@ export function ReaderSettings({
           </button>
         </div>
 
-        <div className="space-y-6 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:pt-6">
+        <div className="space-y-6 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:pt-4">
+          <Group label="Typography">
+            <TypographyPreview
+              fontSize={draft.fontSize}
+              lineHeight={draft.lineHeight}
+              measure={draft.measure}
+            />
+            <div className="space-y-5">
+              <Slider
+                label="Font size"
+                value={draft.fontSize}
+                min={14}
+                max={28}
+                step={1}
+                unit="px"
+                onChange={(fontSize) => setDraft((current) => ({ ...current, fontSize }))}
+              />
+              <Slider
+                label="Line height"
+                value={draft.lineHeight}
+                min={1.3}
+                max={2}
+                step={0.05}
+                onChange={(lineHeight) => setDraft((current) => ({ ...current, lineHeight }))}
+              />
+              <Slider
+                label="Measure"
+                value={draft.measure}
+                min={40}
+                max={90}
+                step={1}
+                unit="ch"
+                onChange={(measure) => setDraft((current) => ({ ...current, measure }))}
+              />
+            </div>
+          </Group>
+
           <Group label="Layout">
             <Segmented
               options={[
@@ -141,35 +197,34 @@ export function ReaderSettings({
               onChange={(v) => onSpeedChange(Number(v))}
             />
           </Group>
-
-          <Slider
-            label="Font size"
-            value={fontSize}
-            min={14}
-            max={28}
-            step={1}
-            unit="px"
-            onChange={onFontSizeChange}
-          />
-          <Slider
-            label="Line height"
-            value={lineHeight}
-            min={1.3}
-            max={2}
-            step={0.05}
-            onChange={onLineHeightChange}
-          />
-          <Slider
-            label="Measure"
-            value={measure}
-            min={40}
-            max={90}
-            step={1}
-            unit="ch"
-            onChange={onMeasureChange}
-          />
         </div>
       </aside>
+    </div>
+  )
+}
+
+function TypographyPreview({
+  fontSize,
+  lineHeight,
+  measure,
+}: {
+  fontSize: number
+  lineHeight: number
+  measure: number
+}) {
+  return (
+    <div className="mb-3 rounded-lg border border-zinc-200/80 bg-zinc-50/80 px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <p
+        className="line-clamp-2 text-pretty text-zinc-900 dark:text-zinc-100"
+        style={{
+          fontFamily: SERIF_STACK,
+          fontSize: `${fontSize}px`,
+          lineHeight,
+          maxWidth: `${measure}ch`,
+        }}
+      >
+        {PREVIEW_TEXT}
+      </p>
     </div>
   )
 }

@@ -20,6 +20,8 @@
   --animate-drawer-backdrop-out: drawer-backdrop-out 160ms ease-out both;
   --animate-drawer-panel-in: drawer-panel-in 220ms var(--ease-drawer) both;
   --animate-drawer-panel-out: drawer-panel-out 200ms var(--ease-drawer) both;
+  --animate-skip-nudge-back: skip-nudge-back 320ms var(--ease-out-strong) both;
+  --animate-skip-nudge-forward: skip-nudge-forward 320ms var(--ease-out-strong) both;
 }
 
 @keyframes library-backdrop-out {
@@ -122,6 +124,36 @@
     opacity: 1;
     filter: blur(0);
     transform: translateY(0);
+  }
+}
+
+@keyframes skip-nudge-back {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 0.82;
+    transform: translateX(-2.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes skip-nudge-forward {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 0.82;
+    transform: translateX(2.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

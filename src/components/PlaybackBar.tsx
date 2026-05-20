@@ -1,6 +1,7 @@
 import type { PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { CornerUpLeft, Pause, Play } from 'lucide-react'
+import { CornerUpLeft, SkipBack, SkipForward } from 'lucide-react'
+import { PlayPauseMorph } from './PlayPauseMorph'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
 type PlaybackState = 'playing' | 'paused'
@@ -9,6 +10,10 @@ type PlaybackControls = {
   state: PlaybackState
   buffering: boolean
   onToggle: () => void
+  canSkipBackward: boolean
+  canSkipForward: boolean
+  onSkipBackward: () => void
+  onSkipForward: () => void
 }
 
 type NavigationControls = {
@@ -59,19 +64,29 @@ export function PlaybackBar({ playback, navigation, progress }: Props) {
   return (
     <div ref={wrapperRef} data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
       <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl flex-col gap-1.5 px-2.5 py-2 sm:flex-row sm:items-center sm:gap-3 sm:px-3">
-        <div className="flex items-center gap-2 sm:contents">
+        <div className="flex items-center gap-1.5 sm:contents">
+          <SkipSentenceButton
+            direction="back"
+            disabled={!playback.canSkipBackward}
+            onClick={playback.onSkipBackward}
+            label="Previous sentence"
+          />
+
           <button
             type="button"
             onClick={playback.onToggle}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white shadow-[0_2px_10px_rgba(24,24,27,0.18)] transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950 dark:shadow-[0_2px_14px_rgba(255,255,255,0.12)]"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? (
-              <Pause className="size-[18px]" fill="currentColor" strokeWidth={0} />
-            ) : (
-              <Play className="size-[18px] translate-x-[1px]" fill="currentColor" strokeWidth={0} />
-            )}
+            <PlayPauseMorph playing={isPlaying} />
           </button>
+
+          <SkipSentenceButton
+            direction="forward"
+            disabled={!playback.canSkipForward}
+            onClick={playback.onSkipForward}
+            label="Next sentence"
+          />
 
           <button
             type="button"
@@ -271,6 +286,50 @@ function ReaderProgress({
         </span>
       </button>
     </div>
+  )
+}
+
+function SkipSentenceButton({
+  direction,
+  disabled,
+  onClick,
+  label,
+}: {
+  direction: 'back' | 'forward'
+  disabled: boolean
+  onClick: () => void
+  label: string
+}) {
+  const [nudgeKey, setNudgeKey] = useState(0)
+  const Icon = direction === 'back' ? SkipBack : SkipForward
+  const nudgeClass =
+    direction === 'back' ? 'animate-(--animate-skip-nudge-back)' : 'animate-(--animate-skip-nudge-forward)'
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return
+        onClick()
+        setNudgeKey((key) => key + 1)
+      }}
+      className="group/skip control-button size-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
+      aria-label={label}
+      title={label}
+    >
+      <Icon
+        key={nudgeKey}
+        strokeWidth={2}
+        className={
+          'size-[17px] transition-transform duration-150 ease-(--ease-out-strong) ' +
+          (direction === 'back'
+            ? 'hoverable:group-hover/skip:-translate-x-px'
+            : 'hoverable:group-hover/skip:translate-x-px') +
+          (nudgeKey > 0 ? ` ${nudgeClass}` : '')
+        }
+      />
+    </button>
   )
 }
 

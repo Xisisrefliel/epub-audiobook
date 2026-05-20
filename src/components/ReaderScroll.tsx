@@ -1,13 +1,15 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Bookmark } from 'lucide-react'
 import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
-import { getChapterDisplayTitle } from '../utils/chapterTitle'
-import { getParagraphText, walkParagraphLineParts, type TextPart } from '../utils/pretextLayout'
+import { useScrollLinesLayout } from '../hooks/useScrollLinesLayout'
+import {
+  getEstimatedLineBlockHeight,
+  SCROLL_SERIF_STACK,
+} from '../utils/scrollLinesLayout'
+import type { TextPart } from '../utils/pretextLayout'
 import { SentenceHighlight } from './SentenceHighlight'
 import { WordHighlight } from './WordHighlight'
 import { HighlightedText } from './readerHighlights'
-
-const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 const LONG_PRESS_BOOKMARK_MS = 520
 const LONG_PRESS_FEEDBACK_MS = 140
 const LONG_PRESS_MOVE_THRESHOLD_PX = 10
@@ -24,15 +26,6 @@ const findOffsetIndex = (values: number[], target: number) => {
   return lo
 }
 
-type LineFragment = {
-  paragraphId: string
-  chapterId: string
-  chapterTitle?: string
-  parts: TextPart[]
-  startsParagraph: boolean
-  startsChapter: boolean
-  endsParagraph: boolean
-}
 
 type BookmarkTarget = { lineKey: string; sentenceId: string; offset: number }
 
@@ -94,13 +87,9 @@ export function ReaderScroll({
     return () => ro.disconnect()
   }, [])
 
-  const lines = useMemo(() => {
-    if (!contentWidth) return []
-    return getCachedScrollLines(book, contentWidth, fontSize, lineHeight)
-  }, [book, contentWidth, fontSize, lineHeight])
-
-  const linesReady = lines.length > 0
-  const lineHeightPx = fontSize * lineHeight
+  const linesLayout = useScrollLinesLayout({ book, contentWidth, fontSize, lineHeight })
+  const { lines, displayFontSize, displayLineHeight, linesReady, isUpdating } = linesLayout
+  const lineHeightPx = displayFontSize * displayLineHeight
   const [viewport, setViewport] = useState(() => ({ y: 0, h: typeof window === 'undefined' ? 900 : window.innerHeight }))
   const sentenceLineIndex = useMemo(() => {
     const map = new Map<string, number>()
@@ -115,10 +104,24 @@ export function ReaderScroll({
     const offsets = new Array(lines.length + 1)
     offsets[0] = 0
     for (let i = 0; i < lines.length; i++) {
-      offsets[i + 1] = offsets[i] + getEstimatedLineBlockHeight(lines[i], i, fontSize, lineHeightPx)
+      offsets[i + 1] = offsets[i] + getEstimatedLineBlockHeight(lines[i], i, displayFontSize, lineHeightPx)
     }
     return offsets
-  }, [fontSize, lineHeightPx, lines])
+  }, [displayFontSize, lineHeightPx, lines])
+
+  const prevUpdatingRef = useRef(false)
+  useEffect(() => {
+    if (prevUpdatingRef.current && !isUpdating && locationSentenceId && linesReady) {
+      requestAnimationFrame(() => {
+        const target = articleRef.current?.querySelector<HTMLElement>(
+          `[data-sid="${CSS.escape(locationSentenceId)}"]`,
+        )
+        target?.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'auto' })
+      })
+    }
+    prevUpdatingRef.current = isUpdating
+  }, [isUpdating, linesReady, locationSentenceId])
+
   const virtual = useMemo(() => {
     const overscanPx = lineHeightPx * 60
     const start = Math.max(0, findOffsetIndex(lineOffsets, Math.max(0, viewport.y - 180 - overscanPx)) - 1)
@@ -380,16 +383,16 @@ export function ReaderScroll({
         className="relative isolate mx-auto text-zinc-700 dark:text-zinc-300"
         style={{
           maxWidth: `${measure}ch`,
-          fontSize: `${fontSize}px`,
-          lineHeight,
-          fontFamily: SERIF_STACK,
+          fontSize: `${displayFontSize}px`,
+          lineHeight: displayLineHeight,
+          fontFamily: SCROLL_SERIF_STACK,
         }}
       >
         <SentenceHighlight
           activeId={currentSentenceId}
           articleRef={articleRef}
-          fontSize={fontSize}
-          refreshKey={`scroll-${lines.length}-${contentWidth}-${fontSize}-${lineHeight}-${measure}`}
+          fontSize={displayFontSize}
+          refreshKey={`scroll-${lines.length}-${contentWidth}-${displayFontSize}-${displayLineHeight}-${measure}`}
         />
         <WordHighlight
           activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
@@ -429,7 +432,7 @@ export function ReaderScroll({
                   'group/line relative ' +
                   'whitespace-nowrap'
                 }
-                style={{ marginTop: li > 0 && line.startsParagraph && !line.startsChapter ? `${fontSize * lineHeight}px` : undefined }}
+                style={{ marginTop: li > 0 && line.startsParagraph && !line.startsChapter ? `${displayFontSize * displayLineHeight}px` : undefined }}
               >
               {target && (
                 <BookmarkButton
@@ -504,6 +507,14 @@ export function ReaderScroll({
           <div style={{ height: virtual.bottom }} />
         </div>
       </article>
+      {isUpdating && (
+        <div
+          role="status"
+          className="pointer-events-none fixed inset-x-0 top-24 z-20 mx-auto w-fit rounded-full bg-zinc-900/85 px-3 py-1 text-[11px] font-medium text-white dark:bg-zinc-100/90 dark:text-zinc-900"
+        >
+          Updating layout…
+        </div>
+      )}
     </div>
   )
 }
@@ -557,67 +568,4 @@ function setPressFeedback(sentenceId: string, pressing: boolean) {
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
-const scrollLinesCache = new WeakMap<Book, Map<string, LineFragment[]>>()
-
-function getCachedScrollLines(book: Book, contentWidth: number, fontSize: number, lineHeight: number) {
-  const key = `${Math.round(contentWidth)}:${fontSize}:${lineHeight}`
-  let bookCache = scrollLinesCache.get(book)
-  if (!bookCache) {
-    bookCache = new Map()
-    scrollLinesCache.set(book, bookCache)
-  }
-  const cached = bookCache.get(key)
-  if (cached) return cached
-
-  const font = `${fontSize}px ${SERIF_STACK}`
-  const out: LineFragment[] = []
-
-  for (const [chapterIndex, chapter] of book.chapters.entries()) {
-      const displayTitle = getChapterDisplayTitle(book, chapterIndex)
-      let isFirstParagraphInChapter = true
-      for (const para of chapter.paragraphs) {
-        const startsChapter = isFirstParagraphInChapter
-        isFirstParagraphInChapter = false
-        const paragraphText = getParagraphText(para)
-        const isDuplicateHeading =
-          startsChapter &&
-          normalizeTitle(paragraphText) === normalizeTitle(chapter.title)
-        if (isDuplicateHeading) continue
-
-        walkParagraphLineParts(para, font, contentWidth, ({ parts, lineIndex, endsParagraph }) => {
-          out.push({
-            paragraphId: para.id,
-            chapterId: chapter.id,
-            chapterTitle: startsChapter && lineIndex === 0 ? displayTitle : undefined,
-            parts,
-            startsParagraph: lineIndex === 0,
-            startsChapter: startsChapter && lineIndex === 0,
-            endsParagraph,
-          })
-        })
-      }
-    }
-
-  bookCache.set(key, out)
-  return out
-}
-
-function getEstimatedLineBlockHeight(line: LineFragment, index: number, fontSize: number, lineHeightPx: number) {
-  let height = lineHeightPx
-  if (index > 0 && line.startsParagraph && !line.startsChapter) height += lineHeightPx
-  if (line.chapterTitle) {
-    const headingLineHeight = Math.max(28, fontSize * 1.25)
-    const headingTop = index === 0 ? 0 : 64
-    height += headingTop + 32 + headingLineHeight
-  }
-  return height
-}
-
-function normalizeTitle(value: string) {
-  return value
-    .replace(/\s+/g, ' ')
-    .replace(/[^\p{L}\p{N}]+/gu, '')
-    .toLowerCase()
 }

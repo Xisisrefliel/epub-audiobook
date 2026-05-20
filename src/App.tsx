@@ -200,6 +200,11 @@ export default function App() {
     library: false,
   })
   const { settings: settingsOpen, toc: tocOpen, bookmarks: bookmarksOpen, library: libraryOpen } = overlays
+  const [readerTypography, setReaderTypography] = useState({ fontSize, lineHeight, measure })
+  const [settingsSession, setSettingsSession] = useState(0)
+  const readerFontSize = settingsOpen ? readerTypography.fontSize : fontSize
+  const readerLineHeight = settingsOpen ? readerTypography.lineHeight : lineHeight
+  const readerMeasure = settingsOpen ? readerTypography.measure : measure
   const setMode = (value: ReaderMode) => dispatchSettings({ type: 'mode', value })
   const setTheme = (value: Theme) => dispatchSettings({ type: 'theme', value })
   const setFontSize = (value: number) => dispatchSettings({ type: 'fontSize', value })
@@ -452,6 +457,18 @@ export default function App() {
         })
       }
     }
+  }
+
+  const activeSentenceIndex = (() => {
+    const anchor = currentSentenceId ?? locationSentenceId
+    return anchor ? sentenceIndexById.get(anchor) : undefined
+  })()
+
+  const skipSentence = (direction: -1 | 1) => {
+    if (activeSentenceIndex === undefined) return
+    const nextSentence = sentences[activeSentenceIndex + direction]
+    if (!nextSentence) return
+    selectSentence(nextSentence.id)
   }
 
   const selectBookmark = (id: string, offset?: number) => {
@@ -798,6 +815,8 @@ export default function App() {
           closeOverlay('library')
           closeOverlay('toc')
           closeOverlay('bookmarks')
+          setReaderTypography({ fontSize, lineHeight, measure })
+          setSettingsSession((session) => session + 1)
           openOverlay('settings')
         }}
       />
@@ -838,9 +857,9 @@ export default function App() {
           chapterIndex={chapterIndex}
           onChapterChange={changeChapter}
           mode={mode}
-          fontSize={fontSize}
-          lineHeight={lineHeight}
-          measure={measure}
+          fontSize={readerFontSize}
+          lineHeight={readerLineHeight}
+          measure={readerMeasure}
           currentSentenceId={currentSentenceId}
           locationSentenceId={locationSentenceId}
           activeWord={activeWord}
@@ -860,10 +879,14 @@ export default function App() {
         playback={{
           state: isPlaying ? 'playing' : 'paused',
           buffering: isBuffering,
+          canSkipBackward: activeSentenceIndex !== undefined && activeSentenceIndex > 0,
+          canSkipForward: activeSentenceIndex !== undefined && activeSentenceIndex < sentences.length - 1,
           onToggle: () => {
             if (isPlaying) stopPlayback()
             else startPlayback()
           },
+          onSkipBackward: () => skipSentence(-1),
+          onSkipForward: () => skipSentence(1),
         }}
         navigation={{
           canGoBack: navigationHistory.index > 0,
@@ -907,6 +930,7 @@ export default function App() {
       />
 
       <ReaderSettings
+        key={settingsSession}
         open={settingsOpen}
         onClose={() => closeOverlay('settings')}
         fontSize={fontSize}

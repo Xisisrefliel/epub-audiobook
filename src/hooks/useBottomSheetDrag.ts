@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useReducer, type PointerEvent } from 'react'
+import { useOverlayScrollLock } from './useOverlayScrollLock'
 
 type Options = {
   open: boolean
@@ -140,6 +141,8 @@ export function useBottomSheetDrag({ open, onClose }: Options) {
   }, [])
 
   const overlayVisible = isMobile ? shouldRender : desktopMounted
+
+  useOverlayScrollLock(overlayVisible)
 
   /* Drawer desktop lifecycle: delayed unmount for exit animation (same idea as BookLibrary). */
   useEffect(() => {

@@ -5,6 +5,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type PointerEvent,
 } from "react";
 import { Bookmark, ChevronLeft, ChevronRight } from "lucide-react";
@@ -296,26 +297,43 @@ export function ReaderPaginated({
     pageLineHeight,
   ]);
 
-  const chapterPageCounts = useMemo(() => {
-    if (!layoutInfo || !pageHeight) return null;
-    return book.chapters.map((ch) =>
-      getCachedChapterPageCount(
-        ch,
-        layoutInfo,
-        pageHeight,
-        pageFontSize,
-        pageLineHeight,
-      ),
-    );
+  const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!layoutInfo || !pageHeight) return;
+
+    let cancelled = false;
+
+    const build = async () => {
+      const counts = new Array<number>(book.chapters.length);
+      for (let i = 0; i < book.chapters.length; i++) {
+        if (cancelled) return;
+        counts[i] = getCachedChapterPageCount(
+          book.chapters[i]!,
+          layoutInfo,
+          pageHeight,
+          pageFontSize,
+          pageLineHeight,
+        );
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+      if (!cancelled) setChapterPageCounts(counts);
+    };
+
+    void build();
+    return () => {
+      cancelled = true;
+    };
   }, [book, layoutInfo, pageFontSize, pageHeight, pageLineHeight]);
 
-  const bookPageOffset = chapterPageCounts
+  const bookPageOffset = chapterPageCounts.length
     ? chapterPageCounts
         .slice(0, chapterIndex)
-        .reduce((sum, count) => sum + count, 0)
+        .reduce((sum: number, count: number) => sum + count, 0)
     : 0;
-  const totalBookPages =
-    chapterPageCounts?.reduce((sum, count) => sum + count, 0) ?? 0;
+  const totalBookPages = chapterPageCounts.length
+    ? chapterPageCounts.reduce((sum: number, count: number) => sum + count, 0)
+    : 0;
 
   const activeWordPageIndex = useMemo(() => {
     if (
@@ -390,7 +408,7 @@ export function ReaderPaginated({
   }, []);
 
   useEffect(() => {
-    if (!layoutInfo || !pageHeight || !chapterPageCounts) {
+    if (!layoutInfo || !pageHeight || chapterPageCounts.length === 0) {
       notifyBookmarkPagesChange({});
       return;
     }
@@ -411,7 +429,7 @@ export function ReaderPaginated({
       const bookPageIndex =
         chapterPageCounts
           .slice(0, chapterIndexForBookmark)
-          .reduce((sum, count) => sum + count, 0) + pageIndexInChapter;
+          .reduce((sum: number, count: number) => sum + count, 0) + pageIndexInChapter;
       pages[sentenceId] = { pageIndex: bookPageIndex, totalPages: totalBookPages };
     }
 

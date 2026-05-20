@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react'
 import { BookOpen, Plus } from 'lucide-react'
+import { useOverlayScrollLock } from '../hooks/useOverlayScrollLock'
 import type { Book } from '../types'
 
 type Props = {
@@ -55,6 +56,8 @@ export function BookLibrary({
     }, EXIT_MS)
     return () => clearTimeout(t)
   }, [open, mounted])
+
+  useOverlayScrollLock(mounted)
 
   if (!mounted) return null
 

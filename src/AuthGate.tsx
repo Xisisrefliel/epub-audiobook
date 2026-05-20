@@ -4,6 +4,13 @@ import App from './App'
 
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
 
+type AuthStatus = { authenticated: boolean; required: boolean }
+
+async function getAuthStatus(): Promise<AuthStatus> {
+  const response = await fetch('/api/auth/status')
+  return response.json() as Promise<AuthStatus>
+}
+
 export function AuthGate() {
   const [state, setState] = useState<AuthState>('checking')
   const [code, setCode] = useState('')
@@ -12,8 +19,7 @@ export function AuthGate() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/auth/status')
-      .then((response) => response.json() as Promise<{ authenticated: boolean; required: boolean }>)
+    getAuthStatus()
       .then((status) => {
         if (cancelled) return
         setState(status.authenticated || !status.required ? 'authenticated' : 'unauthenticated')

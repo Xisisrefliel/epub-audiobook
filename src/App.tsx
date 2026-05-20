@@ -353,9 +353,9 @@ export default function App() {
   useClampReadingPosition({
     book,
     sentences,
-    setChapterIndex,
-    setCurrentSentenceId,
-    setLocationSentenceId,
+    onChapterIndexChange: setChapterIndex,
+    onCurrentSentenceIdChange: setCurrentSentenceId,
+    onLocationSentenceIdChange: setLocationSentenceId,
   })
 
   useEffect(() => {
@@ -377,13 +377,13 @@ export default function App() {
     activeBookStorageKey: ACTIVE_BOOK_STORAGE_KEY,
     markLoadedRef: hasLoadedLibraryDbRef,
     readProgressByBook,
-    setLibrary,
-    setActiveBookId,
-    setBook,
-    setChapterIndex,
-    setCurrentSentenceId,
-    setLocationSentenceId,
-    setCounterMode,
+    onLibraryChange: setLibrary,
+    onActiveBookIdChange: setActiveBookId,
+    onBookChange: setBook,
+    onChapterIndexChange: setChapterIndex,
+    onCurrentSentenceIdChange: setCurrentSentenceId,
+    onLocationSentenceIdChange: setLocationSentenceId,
+    onCounterModeChange: setCounterMode,
   })
 
   useEffect(() => {

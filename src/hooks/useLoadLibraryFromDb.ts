@@ -14,24 +14,24 @@ export function useLoadLibraryFromDb({
   activeBookStorageKey,
   markLoadedRef,
   readProgressByBook,
-  setLibrary,
-  setActiveBookId,
-  setBook,
-  setChapterIndex,
-  setCurrentSentenceId,
-  setLocationSentenceId,
-  setCounterMode,
+  onLibraryChange,
+  onActiveBookIdChange,
+  onBookChange,
+  onChapterIndexChange,
+  onCurrentSentenceIdChange,
+  onLocationSentenceIdChange,
+  onCounterModeChange,
 }: {
   activeBookStorageKey: string
   markLoadedRef: React.MutableRefObject<boolean>
   readProgressByBook: () => Record<string, StoredProgress>
-  setLibrary: React.Dispatch<React.SetStateAction<Book[]>>
-  setActiveBookId: React.Dispatch<React.SetStateAction<string>>
-  setBook: React.Dispatch<React.SetStateAction<Book>>
-  setChapterIndex: React.Dispatch<React.SetStateAction<number>>
-  setCurrentSentenceId: React.Dispatch<React.SetStateAction<string | null>>
-  setLocationSentenceId: React.Dispatch<React.SetStateAction<string | null>>
-  setCounterMode: React.Dispatch<React.SetStateAction<CounterMode>>
+  onLibraryChange: React.Dispatch<React.SetStateAction<Book[]>>
+  onActiveBookIdChange: React.Dispatch<React.SetStateAction<string>>
+  onBookChange: React.Dispatch<React.SetStateAction<Book>>
+  onChapterIndexChange: React.Dispatch<React.SetStateAction<number>>
+  onCurrentSentenceIdChange: React.Dispatch<React.SetStateAction<string | null>>
+  onLocationSentenceIdChange: React.Dispatch<React.SetStateAction<string | null>>
+  onCounterModeChange: React.Dispatch<React.SetStateAction<CounterMode>>
 }) {
   useEffect(() => {
     let cancelled = false
@@ -55,13 +55,13 @@ export function useLoadLibraryFromDb({
             )
           : false
         const fallbackLocationId = nextBook.chapters[nextChapterIndex]?.paragraphs[0]?.sentences[0]?.id ?? null
-        setLibrary(nextLibrary)
-        setActiveBookId(nextBook.id)
-        setBook(nextBook)
-        setChapterIndex(nextChapterIndex)
-        setCurrentSentenceId(progress?.currentSentenceId ?? null)
-        setLocationSentenceId(hasProgressLocation ? progress?.locationSentenceId ?? null : fallbackLocationId)
-        setCounterMode(progress?.counterMode === 'book' ? 'book' : 'chapter')
+        onLibraryChange(nextLibrary)
+        onActiveBookIdChange(nextBook.id)
+        onBookChange(nextBook)
+        onChapterIndexChange(nextChapterIndex)
+        onCurrentSentenceIdChange(progress?.currentSentenceId ?? null)
+        onLocationSentenceIdChange(hasProgressLocation ? progress?.locationSentenceId ?? null : fallbackLocationId)
+        onCounterModeChange(progress?.counterMode === 'book' ? 'book' : 'chapter')
       })
       .catch((error) => console.warn('Could not load library from browser database.', error))
       .finally(() => {
@@ -70,5 +70,5 @@ export function useLoadLibraryFromDb({
     return () => {
       cancelled = true
     }
-  }, [activeBookStorageKey, markLoadedRef, readProgressByBook, setActiveBookId, setBook, setChapterIndex, setCounterMode, setCurrentSentenceId, setLibrary, setLocationSentenceId])
+  }, [activeBookStorageKey, markLoadedRef, readProgressByBook, onActiveBookIdChange, onBookChange, onChapterIndexChange, onCounterModeChange, onCurrentSentenceIdChange, onLibraryChange, onLocationSentenceIdChange])
 }

@@ -177,7 +177,7 @@ body {
 
 @layer components {
   .surface-floating {
-    @apply rounded-2xl border border-zinc-200/80 bg-white/90 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/40 dark:ring-white/[0.03];
+    @apply rounded-2xl border border-zinc-200/80 bg-white/78 shadow-lg shadow-zinc-900/5 ring-1 ring-black/[0.02] backdrop-blur-xl backdrop-saturate-150 dark:border-zinc-800 dark:bg-zinc-950/72 dark:shadow-black/40 dark:ring-white/[0.03];
   }
 
   .control-button {

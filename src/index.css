@@ -268,8 +268,7 @@ html.dark .sentence-press-feedback.is-pressing {
   color: #fff1f2;
 }
 
-[data-highlight-theme='handwritten'] .reader-marker-highlight,
-[data-highlight-theme='handwritten'] .bookmark-text-highlight {
+[data-highlight-theme='handwritten'] .reader-marker-highlight {
   border-radius: 0.18em;
   background: linear-gradient(
     85deg,
@@ -290,6 +289,28 @@ html.dark .sentence-press-feedback.is-pressing {
 [data-highlight-theme='handwritten'] .reader-marker-highlight {
   left: 0;
   top: 0;
+}
+
+[data-highlight-theme='handwritten'] .bookmark-text-highlight {
+  --bookmark-highlight-rgb: 244, 63, 94;
+  --bookmark-highlight-intensity: 1;
+  border-radius: 0.18em;
+  background:
+    linear-gradient(
+      85deg,
+      rgba(var(--bookmark-highlight-rgb), calc(0.62 * var(--bookmark-highlight-intensity))) 2.2%,
+      rgba(var(--bookmark-highlight-rgb), calc(0.46 * var(--bookmark-highlight-intensity))) 8%,
+      rgba(var(--bookmark-highlight-rgb), calc(0.48 * var(--bookmark-highlight-intensity))) 92%,
+      rgba(var(--bookmark-highlight-rgb), calc(0.72 * var(--bookmark-highlight-intensity))) 100%
+    )
+    center / 100% 1.16em no-repeat;
+  box-shadow: none;
+  mask-image: var(--reader-highlight-grain-mask);
+  -webkit-mask-image: var(--reader-highlight-grain-mask);
+  mask-size: 256px 64px;
+  -webkit-mask-size: 256px 64px;
+  mask-repeat: repeat;
+  -webkit-mask-repeat: repeat;
 }
 
 [data-highlight-theme='handwritten'] .reader-marker-highlight-word {
@@ -340,13 +361,14 @@ html.dark [data-highlight-theme='modern'] .bookmark-text-highlight {
 }
 
 [data-highlight-theme='handwritten'] .bookmark-text-highlight {
-  padding: 0.02em 0.16em 0.04em;
+  padding: 0 0.08em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 
 html.dark [data-highlight-theme='handwritten'] .bookmark-text-highlight {
-  color: #fff7ed;
+  --bookmark-highlight-rgb: 251, 113, 133;
+  --bookmark-highlight-intensity: 0.92;
 }
 
 .active-bookmark-cue {
@@ -364,11 +386,11 @@ html.dark [data-highlight-theme='modern'] .active-bookmark-cue {
 }
 
 [data-highlight-theme='handwritten'] .active-bookmark-cue {
-  --reader-highlight-intensity: 1.08;
+  --bookmark-highlight-intensity: 1.08;
 }
 
 html.dark [data-highlight-theme='handwritten'] .active-bookmark-cue {
-  --reader-highlight-intensity: 0.92;
+  --bookmark-highlight-intensity: 1;
 }
 
 .page-content-in {

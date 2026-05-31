@@ -133,6 +133,7 @@ const WordHighlightImpl = function WordHighlight({ activeWord, articleRef, highl
   const [rects, dispatchRects] = useReducer(rectsReducer, [])
   const activeWordRef = useRef<ActiveWord | null>(null)
   const highlightThemeRef = useRef<HighlightTheme>(highlightTheme)
+  const lastHandwrittenSentenceIdRef = useRef<string | null>(null)
   const activeKey = activeWord ? activeWordKey(activeWord) : null
 
   const compute = useCallback(() => {
@@ -172,14 +173,15 @@ const WordHighlightImpl = function WordHighlight({ activeWord, articleRef, highl
       return
     }
 
+    const shouldKeepPreviousHandwrittenRects = () => lastHandwrittenSentenceIdRef.current === latestActiveWord.sentenceId
     const sentenceParts = getSentencePartElements(article, latestActiveWord.sentenceId)
     if (sentenceParts.length === 0) {
-      dispatchRects([])
+      if (!shouldKeepPreviousHandwrittenRects()) dispatchRects([])
       return
     }
     const wordRange = findActiveWordRange(buildSentenceText(sentenceParts), latestActiveWord)
     if (!wordRange) {
-      dispatchRects([])
+      if (!shouldKeepPreviousHandwrittenRects()) dispatchRects([])
       return
     }
 
@@ -197,12 +199,19 @@ const WordHighlightImpl = function WordHighlight({ activeWord, articleRef, highl
       if (rect) next.push(rect)
     }
 
-    dispatchRects(mergeLineRects(next))
+    const merged = mergeLineRects(next)
+    if (merged.length === 0) {
+      if (!shouldKeepPreviousHandwrittenRects()) dispatchRects([])
+      return
+    }
+    lastHandwrittenSentenceIdRef.current = latestActiveWord.sentenceId
+    dispatchRects(merged)
   }, [articleRef])
 
   useLayoutEffect(() => {
     activeWordRef.current = activeWord
     highlightThemeRef.current = highlightTheme
+    if (!activeWord || highlightTheme !== 'handwritten') lastHandwrittenSentenceIdRef.current = null
     compute()
   }, [activeKey, activeWord, compute, highlightTheme])
 

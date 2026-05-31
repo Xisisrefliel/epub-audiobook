@@ -378,6 +378,8 @@ export function ReaderScroll({
     }
   }, [lines, locationSentenceId])
 
+  const renderedActiveWord = highlightTheme === 'modern' ? activeWord : null
+
   return (
     <div className="px-4 pb-52 pt-24 sm:px-6 sm:pb-40">
       <article
@@ -399,7 +401,7 @@ export function ReaderScroll({
           refreshKey={`scroll-${lines.length}-${virtual.start}-${virtual.end}-${contentWidth}-${displayFontSize}-${displayLineHeight}-${measure}`}
         />
         <WordHighlight
-          activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
+          activeWord={activeWord}
           articleRef={articleRef}
           highlightTheme={highlightTheme}
         />
@@ -512,7 +514,7 @@ export function ReaderScroll({
                         ''
                       }
                     >
-                      <HighlightedText part={part} activeWord={activeWord} isBookmarked={isBookmarked} isActive={isActive} />
+                      <HighlightedText part={part} activeWord={renderedActiveWord} isBookmarked={isBookmarked} isActive={isActive} />
                     </span>
                     </span>
                   </Fragment>

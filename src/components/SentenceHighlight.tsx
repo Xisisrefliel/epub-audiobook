@@ -1,4 +1,4 @@
-import { useLayoutEffect, useReducer, type RefObject } from 'react'
+import { memo, useLayoutEffect, useReducer, type RefObject } from 'react'
 import type { HighlightTheme } from '../types'
 import { getSentenceBandHeight } from './highlightGeometry'
 
@@ -39,14 +39,32 @@ function mergeLineRects(rects: Rect[], maxGap: number) {
   return merged
 }
 
-export function SentenceHighlight({
+function rectsEqual(a: Rect[], b: Rect[]) {
+  if (a.length !== b.length) return false
+  return a.every((rect, index) => {
+    const next = b[index]
+    return (
+      !!next &&
+      Math.abs(rect.top - next.top) < 0.1 &&
+      Math.abs(rect.left - next.left) < 0.1 &&
+      Math.abs(rect.width - next.width) < 0.1 &&
+      Math.abs(rect.height - next.height) < 0.1
+    )
+  })
+}
+
+function rectsReducer(current: Rect[], next: Rect[]) {
+  return rectsEqual(current, next) ? current : next
+}
+
+const SentenceHighlightImpl = function SentenceHighlight({
   activeId,
   articleRef,
   fontSize,
   highlightTheme,
   refreshKey,
 }: Props) {
-  const [rects, dispatchRects] = useReducer((_: Rect[], next: Rect[]) => next, [])
+  const [rects, dispatchRects] = useReducer(rectsReducer, [])
 
   useLayoutEffect(() => {
     if (!activeId) {
@@ -125,3 +143,5 @@ export function SentenceHighlight({
     </div>
   )
 }
+
+export const SentenceHighlight = memo(SentenceHighlightImpl)

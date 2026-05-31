@@ -624,6 +624,8 @@ export function ReaderPaginated({
     else goPrev();
   };
 
+  const renderedActiveWord = highlightTheme === "modern" ? activeWord : null;
+
   const renderPage = (
     page: Page,
     className: string,
@@ -699,6 +701,8 @@ export function ReaderPaginated({
                       <span
                         key={`${part.id}-${pi}`}
                         data-sid={part.id}
+                        data-sentence-offset={part.sentenceOffset}
+                        data-sentence-end={part.sentenceOffset + part.text.length}
                         role="button"
                         tabIndex={0}
                         onClick={() => {
@@ -753,7 +757,7 @@ export function ReaderPaginated({
                             ""
                           }
                         >
-                          <HighlightedText part={part} activeWord={activeWord} isBookmarked={isBookmarked} isActive={isActive} />
+                          <HighlightedText part={part} activeWord={renderedActiveWord} isBookmarked={isBookmarked} isActive={isActive} />
                         </span>
                       </span>
                     );
@@ -803,11 +807,7 @@ export function ReaderPaginated({
             refreshKey={`pages-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${pageFontSize}-${pageLineHeight}-${measure}`}
           />
           <WordHighlight
-            activeKey={
-              activeWord
-                ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? "pause" : "word"}`
-                : null
-            }
+            activeWord={activeWord}
             articleRef={articleRef}
             highlightTheme={highlightTheme}
           />

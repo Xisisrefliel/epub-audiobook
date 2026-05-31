@@ -1,9 +1,9 @@
+import { memo } from 'react'
 import type { ActiveWord } from '../types'
 import type { TextPart } from '../utils/pretextLayout'
+import { activeWordKey, findActiveWordRange } from './activeWordText'
 
-const WORD_MATCH_PATTERN = /[\p{L}\p{N}]+(?:['’\-‐‑‒–—][\p{L}\p{N}]+)*/gu
-
-export function HighlightedText({
+export const HighlightedText = memo(function HighlightedText({
   part,
   activeWord,
   isBookmarked,
@@ -20,8 +20,8 @@ export function HighlightedText({
     <>
       <BookmarkText text={part.text.slice(0, match.start)} isBookmarked={isBookmarked} isActive={isActive} />
       <mark
-        key={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
-        data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
+        key={activeWordKey(activeWord!)}
+        data-active-word={activeWordKey(activeWord!)}
         className={
           (isBookmarked ? 'bookmark-text-highlight ' : '') +
           (isBookmarked && isActive ? 'active-bookmark-cue ' : '') +
@@ -32,6 +32,34 @@ export function HighlightedText({
       </mark>
       <BookmarkText text={part.text.slice(match.end)} isBookmarked={isBookmarked} isActive={isActive} />
     </>
+  )
+}, areHighlightedTextPropsEqual)
+
+function areHighlightedTextPropsEqual(
+  prev: {
+    part: TextPart
+    activeWord: ActiveWord | null
+    isBookmarked: boolean
+    isActive: boolean
+  },
+  next: {
+    part: TextPart
+    activeWord: ActiveWord | null
+    isBookmarked: boolean
+    isActive: boolean
+  },
+) {
+  if (prev.part !== next.part || prev.isBookmarked !== next.isBookmarked || prev.isActive !== next.isActive) {
+    return false
+  }
+  const prevActive = prev.activeWord?.sentenceId === prev.part.id ? prev.activeWord : null
+  const nextActive = next.activeWord?.sentenceId === next.part.id ? next.activeWord : null
+  if (!prevActive && !nextActive) return true
+  return (
+    prevActive?.wordIndex === nextActive?.wordIndex &&
+    prevActive?.occurrence === nextActive?.occurrence &&
+    prevActive?.text === nextActive?.text &&
+    prevActive?.isPunctuationPause === nextActive?.isPunctuationPause
   )
 }
 
@@ -53,24 +81,10 @@ function BookmarkText({ text, isBookmarked, isActive }: { text: string; isBookma
 }
 
 function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
-  const target = normalizeWord(activeWord.text)
-  if (!target) return null
-  const matches = Array.from(part.sentenceText.matchAll(WORD_MATCH_PATTERN))
-  const sameWordMatches = matches.filter((match) => normalizeWord(match[0]) === target)
-  const sentenceMatch = sameWordMatches[activeWord.occurrence]
-  if (!sentenceMatch || sentenceMatch.index === undefined) return null
-  const start = sentenceMatch.index - part.sentenceOffset
-  let end = start + sentenceMatch[0].length
-  if (activeWord.isPunctuationPause) {
-    const trailing = part.sentenceText
-      .slice(sentenceMatch.index + sentenceMatch[0].length)
-      .match(/^[,;:–—-]+/u)
-    end += trailing?.[0].length ?? 0
-  }
+  const sentenceMatch = findActiveWordRange(part.sentenceText, activeWord)
+  if (!sentenceMatch) return null
+  const start = sentenceMatch.start - part.sentenceOffset
+  const end = sentenceMatch.end - part.sentenceOffset
   if (end <= 0 || start >= part.text.length) return null
   return { start: Math.max(0, start), end: Math.min(part.text.length, end) }
-}
-
-function normalizeWord(value: string) {
-  return value.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
 }

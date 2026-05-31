@@ -392,7 +392,7 @@ export function ReaderScroll({
           activeId={currentSentenceId}
           articleRef={articleRef}
           fontSize={displayFontSize}
-          refreshKey={`scroll-${lines.length}-${contentWidth}-${displayFontSize}-${displayLineHeight}-${measure}`}
+          refreshKey={`scroll-${lines.length}-${virtual.start}-${virtual.end}-${contentWidth}-${displayFontSize}-${displayLineHeight}-${measure}`}
         />
         <WordHighlight
           activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}

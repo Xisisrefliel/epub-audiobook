@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Effect } from 'effect'
+import { Agentation } from 'agentation'
 import { BookHeader } from './components/BookHeader'
 import { Reader } from './components/Reader'
 import { PlaybackBar } from './components/PlaybackBar'
@@ -451,13 +452,14 @@ export default function App() {
     })
   }
 
-  const selectSentence = (id: string | null, options: { recordHistory?: boolean; scrollOffset?: number } = {}) => {
+  const selectSentence = (id: string | null, options: { recordHistory?: boolean; scrollBehavior?: ScrollBehavior; scrollOffset?: number } = {}) => {
     if (!book) return
     if (id && options.recordHistory) recordNavigationTarget(id)
     setCurrentSentenceId(id)
+    setActiveWord(null)
     if (!id) return
     setLocationSentenceId(id)
-    if (mode === 'scroll') requestScrollToSentence(id, 'auto', 'center', options.scrollOffset)
+    if (mode === 'scroll') requestScrollToSentence(id, options.scrollBehavior ?? 'smooth', 'center', options.scrollOffset)
     const nextChapterIndex = book.chapters.findIndex((ch) =>
       ch.paragraphs.some((p) => p.sentences.some((s) => s.id === id)),
     )
@@ -807,7 +809,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
+    <>
+      <div className="min-h-screen bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
       {!isLoadingBook && book && chapter && (
         <BookHeader
           book={book}
@@ -967,6 +970,8 @@ export default function App() {
         speed={speed}
         onSpeedChange={setSpeed}
       />
-    </div>
+      </div>
+      {process.env.NODE_ENV === 'development' && <Agentation />}
+    </>
   )
 }

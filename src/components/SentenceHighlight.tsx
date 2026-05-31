@@ -95,9 +95,9 @@ export function SentenceHighlight({
       aria-hidden
       className="pointer-events-none absolute inset-0 -z-10"
     >
-      {rects.map((r) => (
+      {rects.map((r, index) => (
         <div
-          key={`${Math.round(r.left)}:${Math.round(r.top)}:${Math.round(r.width)}:${Math.round(r.height)}`}
+          key={index}
           className="absolute rounded-sm bg-amber-200/80 shadow-[0_0_0_1px_rgba(180,83,9,0.08)_inset] dark:bg-amber-400/28 dark:shadow-[0_0_0_1px_rgba(251,191,36,0.12)_inset]"
           style={{
             transform: `translate3d(${r.left}px, ${r.top}px, 0)`,

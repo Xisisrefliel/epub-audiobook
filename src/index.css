@@ -215,6 +215,9 @@ html {
   scrollbar-gutter: stable;
   background-color: #ffffff;
   color-scheme: light;
+  --reader-highlight-rgb: 251, 191, 36;
+  --reader-highlight-intensity: 1.08;
+  --reader-highlight-grain-mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iNjQiPgo8ZGVmcz4KPGZpbHRlciBpZD0iZyIgeD0iMCIgeT0iMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuMDQgMC43IiBudW1PY3RhdmVzPSIxIiBzdGl0Y2hUaWxlcz0ic3RpdGNoIiBzZWVkPSIzIiByZXN1bHQ9InMiLz4KPGZlQ29sb3JNYXRyaXggaW49InMiIHZhbHVlcz0iMCAwIDAgMCAwICAwIDAgMCAwIDAgIDAgMCAwIDAgMCAgMCAwIDAgMC4xNiAwLjg0IiByZXN1bHQ9InNhIi8+CjxmVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuMDEyIiBudW1PY3RhdmVzPSIyIiBzdGl0Y2hUaWxlcz0ic3RpdGNoIiBzZWVkPSI3IiByZXN1bHQ9InAiLz4KPGZlQ29sb3JNYXRyaXggaW49InAiIHZhbHVlcz0iMCAwIDAgMCAwICAwIDAgMCAwIDAgIDAgMCAwIDAgMCAgMCAwIDAgMC4xNCAwLjg2IiByZXN1bHQ9InBhIi8+CjxmZUNvbXBvc2l0ZSBpbj0ic2EiIGluMj0icGEiIG9wZXJhdG9yPSJhcml0aG1ldGljIiBrMT0iMSIgazI9IjAiIGszPSIwIiBrND0iMCIvPgo8L2ZpbHRlcj4KPC9kZWZzPgo8cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjY0IiBmaWxsPSJibGFjayIgZmlsdGVyPSJ1cmwoI2cpIi8+Cjwvc3ZnPg==");
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -222,6 +225,7 @@ html {
 html.dark {
   background-color: #09090b;
   color-scheme: dark;
+  --reader-highlight-intensity: 0.72;
 }
 
 body {
@@ -264,29 +268,107 @@ html.dark .sentence-press-feedback.is-pressing {
   color: #fff1f2;
 }
 
-.bookmark-text-highlight {
+[data-highlight-theme='handwritten'] .reader-marker-highlight,
+[data-highlight-theme='handwritten'] .bookmark-text-highlight {
+  border-radius: 0.18em;
+  background: linear-gradient(
+    85deg,
+    rgba(var(--reader-highlight-rgb), calc(0.62 * var(--reader-highlight-intensity))) 2.2%,
+    rgba(var(--reader-highlight-rgb), calc(0.46 * var(--reader-highlight-intensity))) 8%,
+    rgba(var(--reader-highlight-rgb), calc(0.48 * var(--reader-highlight-intensity))) 92%,
+    rgba(var(--reader-highlight-rgb), calc(0.72 * var(--reader-highlight-intensity))) 100%
+  );
+  box-shadow: none;
+  mask-image: var(--reader-highlight-grain-mask);
+  -webkit-mask-image: var(--reader-highlight-grain-mask);
+  mask-size: 256px 64px;
+  -webkit-mask-size: 256px 64px;
+  mask-repeat: repeat;
+  -webkit-mask-repeat: repeat;
+}
+
+[data-highlight-theme='handwritten'] .reader-marker-highlight {
+  left: 0;
+  top: 0;
+}
+
+[data-highlight-theme='handwritten'] .reader-marker-highlight-word {
+  --reader-highlight-intensity: 0.52;
+}
+
+html.dark [data-highlight-theme='handwritten'] .reader-marker-highlight-word {
+  --reader-highlight-intensity: 0.44;
+}
+
+.active-progress-pen-stroke {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  overflow: visible;
+  opacity: 1;
+  transition: opacity 180ms var(--ease-out-strong);
+}
+
+.active-progress-pen-stroke path {
+  fill: none;
+  stroke: rgb(217, 119, 6);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.95;
+}
+
+html.dark .active-progress-pen-stroke path {
+  stroke: rgb(251, 191, 36);
+  opacity: 0.9;
+}
+
+[data-highlight-theme='modern'] .bookmark-text-highlight {
   background:
     linear-gradient(to top, rgba(190, 18, 60, 0.34) 0 0.12em, transparent 0.12em),
     linear-gradient(to right, rgba(190, 18, 60, 0.06), rgba(190, 18, 60, 0.03));
   box-shadow: inset 0 -1px 0 rgba(190, 18, 60, 0.28);
 }
 
-html.dark .bookmark-text-highlight {
+html.dark [data-highlight-theme='modern'] .bookmark-text-highlight {
   background:
     linear-gradient(to top, rgba(251, 113, 133, 0.5) 0 0.12em, transparent 0.12em),
     linear-gradient(to right, rgba(244, 63, 94, 0.1), rgba(244, 63, 94, 0.04));
   box-shadow: inset 0 -1px 0 rgba(251, 113, 133, 0.34);
 }
 
+[data-highlight-theme='handwritten'] .bookmark-text-highlight {
+  padding: 0.02em 0.16em 0.04em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+html.dark [data-highlight-theme='handwritten'] .bookmark-text-highlight {
+  color: #fff7ed;
+}
+
 .active-bookmark-cue {
   position: relative;
+}
+
+[data-highlight-theme='modern'] .active-bookmark-cue {
   background: linear-gradient(to top, rgba(190, 18, 60, 0.42) 0 0.1em, transparent 0.1em);
   box-shadow: none;
 }
 
-html.dark .active-bookmark-cue {
+html.dark [data-highlight-theme='modern'] .active-bookmark-cue {
   background: linear-gradient(to top, rgba(251, 113, 133, 0.62) 0 0.1em, transparent 0.1em);
   box-shadow: none;
+}
+
+[data-highlight-theme='handwritten'] .active-bookmark-cue {
+  --reader-highlight-intensity: 1.08;
+}
+
+html.dark [data-highlight-theme='handwritten'] .active-bookmark-cue {
+  --reader-highlight-intensity: 0.92;
 }
 
 .page-content-in {
@@ -356,4 +438,3 @@ html.dark .range-input {
     transition-duration: 0.01ms !important;
   }
 }
-

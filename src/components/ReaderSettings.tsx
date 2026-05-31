@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { X } from 'lucide-react'
 import { useBottomSheetDrag } from '../hooks/useBottomSheetDrag'
-import type { Theme, ReaderMode } from '../types'
+import type { HighlightTheme, ReaderMode, Theme } from '../types'
 
 const SERIF_STACK = 'Georgia, Cambria, "Times New Roman", Times, serif'
 const PREVIEW_TEXT =
@@ -24,6 +24,8 @@ type Props = {
   onMeasureChange: (n: number) => void
   theme: Theme
   onThemeChange: (theme: Theme) => void
+  highlightTheme: HighlightTheme
+  onHighlightThemeChange: (theme: HighlightTheme) => void
   mode: ReaderMode
   onModeChange: (mode: ReaderMode) => void
   speed: number
@@ -41,6 +43,8 @@ export function ReaderSettings({
   onMeasureChange,
   theme,
   onThemeChange,
+  highlightTheme,
+  onHighlightThemeChange,
   mode,
   onModeChange,
   speed,
@@ -181,6 +185,17 @@ export function ReaderSettings({
               ]}
               value={theme}
               onChange={(v) => onThemeChange(v as Theme)}
+            />
+          </Group>
+
+          <Group label="Highlights">
+            <Segmented
+              options={[
+                { value: 'modern', label: 'Modern' },
+                { value: 'handwritten', label: 'Handwritten' },
+              ]}
+              value={highlightTheme}
+              onChange={(v) => onHighlightThemeChange(v as HighlightTheme)}
             />
           </Group>
 

@@ -1,5 +1,6 @@
 export type ReaderMode = 'scroll' | 'paginated'
 export type Theme = 'light' | 'dark' | 'system'
+export type HighlightTheme = 'modern' | 'handwritten'
 
 type Sentence = {
   id: string

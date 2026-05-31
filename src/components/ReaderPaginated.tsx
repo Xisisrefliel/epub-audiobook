@@ -15,6 +15,7 @@ import type {
   BookmarkPageInfo,
   Bookmark as BookmarkAnchor,
   Chapter,
+  HighlightTheme,
   PaginationInfo,
 } from "../types";
 import {
@@ -39,6 +40,7 @@ const LONG_PRESS_FEEDBACK_MS = 140;
 const LONG_PRESS_MOVE_THRESHOLD_PX = 10;
 const SWIPE_VELOCITY_THRESHOLD_PX_MS = 0.45;
 const SWIPE_VELOCITY_MIN_DISTANCE_PX = 24;
+const WORD_MATCH_PATTERN = /[\p{L}\p{N}]+(?:['’\-‐‑‒–—][\p{L}\p{N}]+)*/gu;
 
 type LineFragment = {
   paragraphId: string;
@@ -94,6 +96,7 @@ type Props = {
   book: Book;
   chapterIndex: number;
   onChapterChange: (index: number, edge?: "start" | "end") => void;
+  highlightTheme: HighlightTheme;
   fontSize: number;
   lineHeight: number;
   measure: number;
@@ -113,6 +116,7 @@ type Props = {
 export function ReaderPaginated({
   book,
   chapterIndex,
+  highlightTheme,
   onChapterChange,
   fontSize,
   lineHeight,
@@ -782,6 +786,7 @@ export function ReaderPaginated({
           onPointerCancel={() => {
             touchStartRef.current = null;
           }}
+          data-highlight-theme={highlightTheme}
           className="relative isolate overflow-visible px-1 text-zinc-700 touch-pan-y sm:px-0 dark:text-zinc-300"
           style={{
             fontSize: `${pageFontSize}px`,
@@ -794,6 +799,7 @@ export function ReaderPaginated({
             activeId={currentSentenceId}
             articleRef={articleRef}
             fontSize={pageFontSize}
+            highlightTheme={highlightTheme}
             refreshKey={`pages-${pageIndex}-${chapterTotal}-${layoutInfo?.articleWidth ?? 0}-${pageFontSize}-${pageLineHeight}-${measure}`}
           />
           <WordHighlight
@@ -803,6 +809,7 @@ export function ReaderPaginated({
                 : null
             }
             articleRef={articleRef}
+            highlightTheme={highlightTheme}
           />
 
           {currentPage &&
@@ -1145,7 +1152,7 @@ function findPageIndexForActiveWord(
 function getActiveWordSentenceOffset(sentenceText: string, activeWord: ActiveWord) {
   const target = normalizeWord(activeWord.text);
   if (!target) return null;
-  const matches = Array.from(sentenceText.matchAll(/[\p{L}\p{N}]+/gu));
+  const matches = Array.from(sentenceText.matchAll(WORD_MATCH_PATTERN));
   const sameWordMatches = matches.filter(
     (match) => normalizeWord(match[0]) === target,
   );

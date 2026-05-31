@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { ActiveWord, Book, Bookmark, BookmarkPageInfo, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
+import type { ActiveWord, Book, Bookmark, BookmarkPageInfo, HighlightTheme, PaginationInfo, ReaderMode, ScrollRequest } from '../types'
 import { ReaderScroll } from './ReaderScroll'
 import { ReaderPaginated } from './ReaderPaginated'
 
@@ -8,6 +8,7 @@ type Props = {
   chapterIndex: number
   onChapterChange: (index: number, edge?: 'start' | 'end') => void
   mode: ReaderMode
+  highlightTheme: HighlightTheme
   fontSize: number
   lineHeight: number
   measure: number

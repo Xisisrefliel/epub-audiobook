@@ -1,6 +1,8 @@
 import type { ActiveWord } from '../types'
 import type { TextPart } from '../utils/pretextLayout'
 
+const WORD_MATCH_PATTERN = /[\p{L}\p{N}]+(?:['’\-‐‑‒–—][\p{L}\p{N}]+)*/gu
+
 export function HighlightedText({
   part,
   activeWord,
@@ -18,11 +20,12 @@ export function HighlightedText({
     <>
       <BookmarkText text={part.text.slice(0, match.start)} isBookmarked={isBookmarked} isActive={isActive} />
       <mark
+        key={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
         data-active-word={`${activeWord!.sentenceId}:${activeWord!.wordIndex}:${activeWord!.isPunctuationPause ? 'pause' : 'word'}`}
         className={
           (isBookmarked ? 'bookmark-text-highlight ' : '') +
           (isBookmarked && isActive ? 'active-bookmark-cue ' : '') +
-          'rounded-[0.18em] bg-transparent px-0.5 text-inherit'
+          'bg-transparent p-0 text-inherit'
         }
       >
         {part.text.slice(match.start, match.end)}
@@ -52,7 +55,7 @@ function BookmarkText({ text, isBookmarked, isActive }: { text: string; isBookma
 function findActiveWordMatch(part: TextPart, activeWord: ActiveWord) {
   const target = normalizeWord(activeWord.text)
   if (!target) return null
-  const matches = Array.from(part.sentenceText.matchAll(/[\p{L}\p{N}]+/gu))
+  const matches = Array.from(part.sentenceText.matchAll(WORD_MATCH_PATTERN))
   const sameWordMatches = matches.filter((match) => normalizeWord(match[0]) === target)
   const sentenceMatch = sameWordMatches[activeWord.occurrence]
   if (!sentenceMatch || sentenceMatch.index === undefined) return null

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Bookmark } from 'lucide-react'
-import type { ActiveWord, Book, Bookmark as BookmarkAnchor, ScrollRequest } from '../types'
+import type { ActiveWord, Book, Bookmark as BookmarkAnchor, HighlightTheme, ScrollRequest } from '../types'
 import { useScrollLinesLayout } from '../hooks/useScrollLinesLayout'
 import {
   getEstimatedLineBlockHeight,
@@ -32,6 +32,7 @@ type BookmarkTarget = { lineKey: string; sentenceId: string; offset: number }
 type Props = {
   book: Book
   chapterIndex: number
+  highlightTheme: HighlightTheme
   fontSize: number
   lineHeight: number
   measure: number
@@ -49,6 +50,7 @@ type Props = {
 
 export function ReaderScroll({
   book,
+  highlightTheme,
   fontSize,
   lineHeight,
   measure,
@@ -380,6 +382,7 @@ export function ReaderScroll({
     <div className="px-4 pb-52 pt-24 sm:px-6 sm:pb-40">
       <article
         ref={articleRef}
+        data-highlight-theme={highlightTheme}
         className="relative isolate mx-auto text-zinc-700 dark:text-zinc-300"
         style={{
           maxWidth: `${measure}ch`,
@@ -392,11 +395,13 @@ export function ReaderScroll({
           activeId={currentSentenceId}
           articleRef={articleRef}
           fontSize={displayFontSize}
+          highlightTheme={highlightTheme}
           refreshKey={`scroll-${lines.length}-${virtual.start}-${virtual.end}-${contentWidth}-${displayFontSize}-${displayLineHeight}-${measure}`}
         />
         <WordHighlight
           activeKey={activeWord ? `${activeWord.sentenceId}:${activeWord.wordIndex}:${activeWord.isPunctuationPause ? 'pause' : 'word'}` : null}
           articleRef={articleRef}
+          highlightTheme={highlightTheme}
         />
 
         <div className="relative z-10">

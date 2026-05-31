@@ -21,7 +21,7 @@ import { useReadingPosition } from './hooks/useReadingPosition'
 import { useClampReadingPosition } from './hooks/useClampReadingPosition'
 import { useLoadLibraryFromDb } from './hooks/useLoadLibraryFromDb'
 import { writeLibraryToDb } from './storage/libraryDb'
-import type { Book, Bookmark, BookmarkPageInfo, CounterMode, ReaderMode, ScrollProgressInfo, Theme } from './types'
+import type { Book, Bookmark, BookmarkPageInfo, CounterMode, HighlightTheme, ReaderMode, ScrollProgressInfo, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
 const PLAYBACK_SPEED_STORAGE_KEY = `${STORAGE_PREFIX}playbackSpeed`
@@ -46,6 +46,7 @@ type StoredProgress = {
 type AppSettingsState = {
   mode: ReaderMode
   theme: Theme
+  highlightTheme: HighlightTheme
   fontSize: number
   lineHeight: number
   measure: number
@@ -55,6 +56,7 @@ type AppSettingsState = {
 type AppSettingsAction =
   | { type: 'mode'; value: ReaderMode }
   | { type: 'theme'; value: Theme }
+  | { type: 'highlightTheme'; value: HighlightTheme }
   | { type: 'fontSize'; value: number }
   | { type: 'lineHeight'; value: number }
   | { type: 'measure'; value: number }
@@ -66,6 +68,8 @@ function appSettingsReducer(state: AppSettingsState, action: AppSettingsAction):
       return state.mode === action.value ? state : { ...state, mode: action.value }
     case 'theme':
       return state.theme === action.value ? state : { ...state, theme: action.value }
+    case 'highlightTheme':
+      return state.highlightTheme === action.value ? state : { ...state, highlightTheme: action.value }
     case 'fontSize':
       return state.fontSize === action.value ? state : { ...state, fontSize: action.value }
     case 'lineHeight':
@@ -94,6 +98,7 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
 type StoredSettings = {
   mode?: ReaderMode
   theme?: Theme
+  highlightTheme?: HighlightTheme
   fontSize?: number
   lineHeight?: number
   measure?: number
@@ -194,12 +199,16 @@ export default function App() {
       stored.theme === 'light' || stored.theme === 'dark' || stored.theme === 'system'
         ? stored.theme
         : 'system',
+    highlightTheme:
+      stored.highlightTheme === 'modern' || stored.highlightTheme === 'handwritten'
+        ? stored.highlightTheme
+        : 'handwritten',
     fontSize: Number.isFinite(stored.fontSize) ? Math.min(28, Math.max(14, stored.fontSize ?? 19)) : 19,
     lineHeight: Number.isFinite(stored.lineHeight) ? Math.min(2.2, Math.max(1.25, stored.lineHeight ?? 1.65)) : 1.65,
     measure: Number.isFinite(stored.measure) ? Math.min(84, Math.max(42, stored.measure ?? 62)) : 62,
     speed: readStoredPlaybackSpeed(stored),
   }))
-  const { mode, theme, fontSize, lineHeight, measure, speed } = settings
+  const { mode, theme, highlightTheme, fontSize, lineHeight, measure, speed } = settings
   const [overlays, dispatchOverlay] = useReducer(overlayReducer, {
     settings: false,
     toc: false,
@@ -214,6 +223,7 @@ export default function App() {
   const readerMeasure = settingsOpen ? readerTypography.measure : measure
   const setMode = (value: ReaderMode) => dispatchSettings({ type: 'mode', value })
   const setTheme = (value: Theme) => dispatchSettings({ type: 'theme', value })
+  const setHighlightTheme = (value: HighlightTheme) => dispatchSettings({ type: 'highlightTheme', value })
   const setFontSize = (value: number) => dispatchSettings({ type: 'fontSize', value })
   const setLineHeight = (value: number) => dispatchSettings({ type: 'lineHeight', value })
   const setMeasure = (value: number) => dispatchSettings({ type: 'measure', value })
@@ -383,13 +393,13 @@ export default function App() {
   })
 
   useEffect(() => {
-    writeJson(SETTINGS_STORAGE_KEY, { mode, theme, fontSize, lineHeight, measure, speed })
+    writeJson(SETTINGS_STORAGE_KEY, { mode, theme, highlightTheme, fontSize, lineHeight, measure, speed })
     try {
       window.localStorage.setItem(PLAYBACK_SPEED_STORAGE_KEY, String(speed))
     } catch {
       // Ignore storage failures; settings persistence is best-effort.
     }
-  }, [mode, theme, fontSize, lineHeight, measure, speed])
+  }, [mode, theme, highlightTheme, fontSize, lineHeight, measure, speed])
 
   useEffect(() => {
     if (!book) return
@@ -619,6 +629,7 @@ export default function App() {
     const sentence = sentences[index]
     if (!sentence) {
       setIsPlaying(false)
+      setActiveWord(null)
       return
     }
 
@@ -676,29 +687,21 @@ export default function App() {
         wordCursor++
       }
       const word = audio.words[wordCursor]
-      if (word) {
+      if (word && currentTime >= word.start) {
         const nextWord = audio.words[wordCursor + 1]
         const gapToNext = nextWord ? nextWord.start - word.end : 0
         const isShortPunctuationPause = currentTime > word.end && gapToNext > 0 && gapToNext <= 0.45 && currentTime < nextWord.start
-        const shouldHighlight =
-          (currentTime >= word.start && currentTime <= word.end + 0.06) ||
-          isShortPunctuationPause
-
-        if (shouldHighlight) {
-          const wordIndex = wordCursor
-          const occurrence = audio.words
-            .slice(0, wordIndex + 1)
-            .filter((candidate) => normalizeWord(candidate.text) === normalizeWord(word.text)).length - 1
-          setActiveWord((current) =>
-            current?.sentenceId === sentence.id &&
-            current.wordIndex === wordIndex &&
-            current.isPunctuationPause === isShortPunctuationPause
-              ? current
-              : { sentenceId: sentence.id, wordIndex, occurrence, text: word.text, isPunctuationPause: isShortPunctuationPause },
-          )
-        } else if (currentTime > word.end + 0.12) {
-          setActiveWord(null)
-        }
+        const wordIndex = wordCursor
+        const occurrence = audio.words
+          .slice(0, wordIndex + 1)
+          .filter((candidate) => normalizeWord(candidate.text) === normalizeWord(word.text)).length - 1
+        setActiveWord((current) =>
+          current?.sentenceId === sentence.id &&
+          current.wordIndex === wordIndex &&
+          current.isPunctuationPause === isShortPunctuationPause
+            ? current
+            : { sentenceId: sentence.id, wordIndex, occurrence, text: word.text, isPunctuationPause: isShortPunctuationPause },
+        )
       }
       wordFrameRef.current = requestAnimationFrame(updateActiveWord)
     }
@@ -876,6 +879,7 @@ export default function App() {
             chapterIndex={chapterIndex}
             onChapterChange={changeChapter}
             mode={mode}
+            highlightTheme={highlightTheme}
             fontSize={readerFontSize}
             lineHeight={readerLineHeight}
             measure={readerMeasure}
@@ -965,6 +969,8 @@ export default function App() {
         onMeasureChange={setMeasure}
         theme={theme}
         onThemeChange={setTheme}
+        highlightTheme={highlightTheme}
+        onHighlightThemeChange={setHighlightTheme}
         mode={mode}
         onModeChange={setMode}
         speed={speed}

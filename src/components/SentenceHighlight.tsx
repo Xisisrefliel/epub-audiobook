@@ -1,4 +1,5 @@
 import { useLayoutEffect, useReducer, type RefObject } from 'react'
+import type { HighlightTheme } from '../types'
 import { getSentenceBandHeight } from './highlightGeometry'
 
 type Rect = { top: number; left: number; width: number; height: number }
@@ -7,11 +8,18 @@ type Props = {
   activeId: string | null
   articleRef: RefObject<HTMLElement | null>
   fontSize: number
+  highlightTheme: HighlightTheme
   refreshKey?: string | number
 }
 
 const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)'
 const DURATION = 220
+
+function buildMarkerClipPath(width: number, height: number) {
+  const slant = Math.min(4, Math.max(2.5, width * 0.018))
+  const radius = Math.min(3.5, height * 0.35)
+  return `path("M ${slant + radius} 0 L ${width - radius} 0 Q ${width} 0 ${width} ${radius} L ${width - slant} ${height - radius} Q ${width - slant} ${height} ${width - slant - radius} ${height} L ${radius} ${height} Q 0 ${height} 0 ${height - radius} L ${slant} ${radius} Q ${slant} 0 ${slant + radius} 0 Z")`
+}
 
 function mergeLineRects(rects: Rect[], maxGap: number) {
   const sorted = rects.toSorted((a, b) => (Math.abs(a.top - b.top) > 2 ? a.top - b.top : a.left - b.left))
@@ -35,6 +43,7 @@ export function SentenceHighlight({
   activeId,
   articleRef,
   fontSize,
+  highlightTheme,
   refreshKey,
 }: Props) {
   const [rects, dispatchRects] = useReducer((_: Rect[], next: Rect[]) => next, [])
@@ -98,11 +107,17 @@ export function SentenceHighlight({
       {rects.map((r, index) => (
         <div
           key={index}
-          className="absolute rounded-sm bg-amber-200/80 shadow-[0_0_0_1px_rgba(180,83,9,0.08)_inset] dark:bg-amber-400/28 dark:shadow-[0_0_0_1px_rgba(251,191,36,0.12)_inset]"
+          className={
+            highlightTheme === 'handwritten'
+              ? 'reader-marker-highlight absolute'
+              : 'absolute rounded-sm bg-amber-200/80 shadow-[0_0_0_1px_rgba(180,83,9,0.08)_inset] dark:bg-amber-400/28 dark:shadow-[0_0_0_1px_rgba(251,191,36,0.12)_inset]'
+          }
           style={{
             transform: `translate3d(${r.left}px, ${r.top}px, 0)`,
             width: r.width,
             height: r.height,
+            clipPath: highlightTheme === 'handwritten' ? buildMarkerClipPath(r.width, r.height) : undefined,
+            WebkitClipPath: highlightTheme === 'handwritten' ? buildMarkerClipPath(r.width, r.height) : undefined,
             transition: `transform ${DURATION}ms ${EASE}, width ${DURATION}ms ${EASE}, height ${DURATION}ms ${EASE}`,
           }}
         />

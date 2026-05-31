@@ -1,6 +1,6 @@
 import type { PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { CornerUpLeft, SkipBack, SkipForward } from 'lucide-react'
+import { ChevronDown, ChevronUp, SkipBack, SkipForward } from 'lucide-react'
 import { PlayPauseMorph } from './PlayPauseMorph'
 import type { CounterMode, PaginationInfo, ReaderMode, ScrollProgressInfo } from '../types'
 
@@ -36,11 +36,13 @@ type Props = {
   playback: PlaybackControls
   navigation: NavigationControls
   progress: ProgressControls
+  chromeHidden: boolean
+  onChromeHiddenChange: (hidden: boolean) => void
 }
 
 const LIVE_SEEK_INTERVAL_MS = 90
 
-export function PlaybackBar({ playback, navigation, progress }: Props) {
+export function PlaybackBar({ playback, navigation, progress, chromeHidden, onChromeHiddenChange }: Props) {
   const isPlaying = playback.state === 'playing'
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -62,82 +64,118 @@ export function PlaybackBar({ playback, navigation, progress }: Props) {
   }, [])
 
   return (
-    <div ref={wrapperRef} data-reader-chrome="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
-      <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl flex-col gap-1.5 px-2.5 py-2 sm:flex-row sm:items-center sm:gap-3 sm:px-3">
-        <div className="flex items-center gap-1.5 sm:contents">
-          <SkipSentenceButton
-            direction="back"
-            disabled={!playback.canSkipBackward}
-            onClick={playback.onSkipBackward}
-            label="Previous sentence"
-          />
-
-          <button
-            type="button"
-            onClick={playback.onToggle}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white shadow-[0_2px_10px_rgba(24,24,27,0.18)] transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950 dark:shadow-[0_2px_14px_rgba(255,255,255,0.12)]"
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+    <div ref={wrapperRef} data-reader-chrome={chromeHidden ? undefined : 'bottom'} className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
+      <div
+        className="relative mx-auto h-[6.5rem] sm:h-14"
+        style={{ width: 'min(48rem, calc(100vw - 1rem))' }}
+      >
+        <div
+          className={
+            'surface-floating pointer-events-auto absolute bottom-0 left-1/2 flex -translate-x-1/2 overflow-hidden transition-[width,height,border-radius,padding] duration-[280ms] ease-(--ease-out-strong) [contain:layout_paint_style] ' +
+            (chromeHidden
+              ? 'rounded-full p-0'
+              : 'rounded-2xl px-2.5 py-2 sm:px-3')
+          }
+          style={{
+            width: chromeHidden ? '2.5rem' : '100%',
+            height: chromeHidden ? '2.5rem' : '100%',
+          }}
+        >
+          <div
+            inert={chromeHidden}
+            className={
+              'flex h-full w-full min-w-0 flex-col justify-center gap-1.5 transition-[opacity,transform] duration-150 ease-(--ease-out-strong) sm:flex-row sm:items-center sm:gap-3 ' +
+              (chromeHidden ? 'pointer-events-none scale-[0.98] opacity-0' : 'scale-100 opacity-100')
+            }
           >
-            <PlayPauseMorph playing={isPlaying} />
-          </button>
+            <div className="flex items-center gap-1.5 sm:contents">
+              <SkipSentenceButton
+                direction="back"
+                disabled={!playback.canSkipBackward}
+                onClick={playback.onSkipBackward}
+                label="Previous sentence"
+              />
 
-          <SkipSentenceButton
-            direction="forward"
-            disabled={!playback.canSkipForward}
-            onClick={playback.onSkipForward}
-            label="Next sentence"
-          />
+              <button
+                type="button"
+                onClick={playback.onToggle}
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white shadow-[0_2px_10px_rgba(24,24,27,0.18)] transition-transform duration-150 ease-(--ease-out-strong) active:scale-[0.94] dark:bg-zinc-50 dark:text-zinc-950 dark:shadow-[0_2px_14px_rgba(255,255,255,0.12)]"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+              >
+                <PlayPauseMorph playing={isPlaying} />
+              </button>
 
-          <button
-            type="button"
-            onClick={navigation.onGoBack}
-            disabled={!navigation.canGoBack}
-            className="control-button size-10 shrink-0 disabled:cursor-default disabled:opacity-35 disabled:active:scale-100"
-            aria-label="Go back to previous reading location"
-            title="Go back"
-          >
-            <CornerUpLeft className="size-[18px]" strokeWidth={2} />
-          </button>
+              <SkipSentenceButton
+                direction="forward"
+                disabled={!playback.canSkipForward}
+                onClick={playback.onSkipForward}
+                label="Next sentence"
+              />
 
-          {navigation.canSync && (
+              {navigation.canSync && (
+                <button
+                  type="button"
+                  onClick={navigation.onSync}
+                  className="ml-auto h-9 rounded-full border border-zinc-200/80 px-3 text-[10px] font-semibold tracking-[0.12em] text-zinc-800 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] sm:hidden dark:border-zinc-800 dark:text-zinc-100"
+                  aria-label="Sync to current sentence"
+                >
+                  SYNC
+                </button>
+              )}
+            </div>
+
+            {navigation.canSync && (
+              <button
+                type="button"
+                onClick={navigation.onSync}
+                className="hidden shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:block dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
+                aria-label="Sync to current sentence"
+              >
+                SYNC
+              </button>
+            )}
+
+            {playback.buffering && (
+              <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-900 dark:text-zinc-400" aria-live="polite">
+                <span className="size-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                Buffering
+              </div>
+            )}
+
+            <ReaderProgress
+              mode={progress.mode}
+              paginationInfo={progress.paginationInfo}
+              scrollProgressInfo={progress.scrollProgressInfo}
+              counterMode={progress.counterMode}
+              onToggleCounterMode={progress.onToggleCounterMode}
+              onProgressSeek={progress.onSeek}
+              className="order-2 sm:order-none"
+            />
+
             <button
               type="button"
-              onClick={navigation.onSync}
-              className="ml-auto h-9 rounded-full border border-zinc-200/80 px-3 text-[10px] font-semibold tracking-[0.12em] text-zinc-800 transition-[background-color,transform,color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] sm:hidden dark:border-zinc-800 dark:text-zinc-100"
-              aria-label="Sync to current sentence"
+              onClick={() => onChromeHiddenChange(true)}
+              className="control-button ml-1 size-10 shrink-0 opacity-70 hoverable:hover:opacity-100"
+              aria-label="Hide reader controls"
+              title="Hide controls"
             >
-              SYNC
+              <ChevronDown className="size-[17px]" strokeWidth={2} />
             </button>
-          )}
-        </div>
+          </div>
 
-        {navigation.canSync && (
           <button
             type="button"
-            onClick={navigation.onSync}
-            className="hidden shrink-0 rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-white shadow-sm transition-[transform,background-color] duration-150 ease-(--ease-out-strong) animate-(--animate-toast-in) active:scale-[0.96] hoverable:hover:bg-zinc-700 sm:block dark:bg-zinc-50 dark:text-zinc-950 dark:hoverable:hover:bg-white"
-            aria-label="Sync to current sentence"
+            onClick={() => onChromeHiddenChange(false)}
+            className={
+              'absolute inset-0 flex items-center justify-center rounded-full text-zinc-700 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] dark:text-zinc-200 ' +
+              (chromeHidden ? 'scale-100 opacity-80 blur-0 hoverable:hover:opacity-100' : 'pointer-events-none scale-[0.25] opacity-0 blur-[4px]')
+            }
+            aria-label="Show reader controls"
+            title="Show controls"
           >
-            SYNC
+            <ChevronUp className="size-[17px]" strokeWidth={2} />
           </button>
-        )}
-
-        {playback.buffering && (
-          <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 sm:flex dark:bg-zinc-900 dark:text-zinc-400" aria-live="polite">
-            <span className="size-1.5 animate-pulse rounded-full bg-zinc-400 dark:bg-zinc-500" />
-            Buffering
-          </div>
-        )}
-
-        <ReaderProgress
-          mode={progress.mode}
-          paginationInfo={progress.paginationInfo}
-          scrollProgressInfo={progress.scrollProgressInfo}
-          counterMode={progress.counterMode}
-          onToggleCounterMode={progress.onToggleCounterMode}
-          onProgressSeek={progress.onSeek}
-          className="order-2 sm:order-none"
-        />
+        </div>
       </div>
     </div>
   )

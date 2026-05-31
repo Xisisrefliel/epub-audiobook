@@ -24,13 +24,15 @@ type Props = {
   scrollRequest: ScrollRequest | null
   syncKey: number
   onCurrentSentenceVisibilityChange: (visible: boolean) => void
+  chromeHidden: boolean
 }
 
-export const Reader = memo(function Reader({ onPaginationChange, onBookmarkPagesChange, ...props }: Props) {
+export const Reader = memo(function Reader({ onPaginationChange, onBookmarkPagesChange, chromeHidden, ...props }: Props) {
   if (props.mode === 'paginated') {
     return (
       <ReaderPaginated
         {...props}
+        chromeHidden={chromeHidden}
         onPaginationChange={onPaginationChange}
         onBookmarkPagesChange={onBookmarkPagesChange}
       />

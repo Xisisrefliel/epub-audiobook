@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { readLibraryFromDb } from '../storage/libraryDb'
+import { normalizeLibrarySentences } from '../utils/normalizeBookSentences'
 import type { Book, CounterMode } from '../types'
 
 const REMOVED_SAMPLE_BOOK_ID = 'alice'
@@ -40,7 +41,7 @@ export function useLoadLibraryFromDb({
       .then((storedLibrary) => {
         if (cancelled) return
         const dbLibrary =
-          storedLibrary?.filter((storedBook) => storedBook?.chapters?.length && storedBook.id !== REMOVED_SAMPLE_BOOK_ID) ?? []
+          normalizeLibrarySentences(storedLibrary?.filter((storedBook) => storedBook?.chapters?.length && storedBook.id !== REMOVED_SAMPLE_BOOK_ID) ?? [])
         if (!dbLibrary.length) return
         const storedActiveBookId = window.localStorage.getItem(activeBookStorageKey)
         const nextBook = dbLibrary.find((candidate) => candidate.id === storedActiveBookId) ?? dbLibrary[0] ?? null

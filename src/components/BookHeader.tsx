@@ -11,6 +11,7 @@ type Props = {
   onOpenLibrary: () => void
   onOpenToc: () => void
   onOpenBookmarks: () => void
+  hidden?: boolean
 }
 
 export function BookHeader({
@@ -22,13 +23,23 @@ export function BookHeader({
   onOpenLibrary,
   onOpenToc,
   onOpenBookmarks,
+  hidden = false,
 }: Props) {
   const chapterIndex = Math.max(0, book.chapters.findIndex((ch) => ch.id === chapter.id))
   const chapterTitle = getChapterDisplayTitle(book, chapterIndex)
 
   return (
-    <header data-reader-chrome="top" className="pointer-events-none fixed inset-x-0 top-0 z-30 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:pt-4">
-      <div className="surface-floating pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 px-2.5 py-2 sm:gap-4 sm:px-4 sm:py-2.5">
+    <header
+      data-reader-chrome={hidden ? undefined : 'top'}
+      inert={hidden}
+      className="pointer-events-none fixed inset-x-0 top-0 z-30 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-4 sm:pt-4"
+    >
+      <div
+        className={
+          'surface-floating pointer-events-auto mx-auto flex max-w-3xl transform-gpu items-center gap-2 px-2.5 py-2 transition-[opacity,transform] duration-[280ms] ease-(--ease-out-strong) will-change-transform sm:gap-4 sm:px-4 sm:py-2.5 ' +
+          (hidden ? '-translate-y-[calc(100%+1rem)] opacity-0' : 'translate-y-0 opacity-100')
+        }
+      >
         <button
           type="button"
           onClick={onOpenLibrary}

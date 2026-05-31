@@ -21,6 +21,7 @@ import { useReadingPosition } from './hooks/useReadingPosition'
 import { useClampReadingPosition } from './hooks/useClampReadingPosition'
 import { useLoadLibraryFromDb } from './hooks/useLoadLibraryFromDb'
 import { writeLibraryToDb } from './storage/libraryDb'
+import { normalizeBookSentences, normalizeLibrarySentences } from './utils/normalizeBookSentences'
 import type { Book, Bookmark, BookmarkPageInfo, CounterMode, HighlightTheme, ReaderMode, ScrollProgressInfo, Theme } from './types'
 
 const STORAGE_PREFIX = 'audiobook-ui.'
@@ -129,12 +130,12 @@ function readStoredPlaybackSpeed(settings = readJson<StoredSettings>(SETTINGS_ST
 
 function readStoredLibrary() {
   const storedLibrary =
-    readJson<Book[]>(LIBRARY_STORAGE_KEY)?.filter((book) => book?.chapters?.length && book.id !== REMOVED_SAMPLE_BOOK_ID) ?? []
+    normalizeLibrarySentences(readJson<Book[]>(LIBRARY_STORAGE_KEY)?.filter((book) => book?.chapters?.length && book.id !== REMOVED_SAMPLE_BOOK_ID) ?? [])
   const legacyBook = readJson<Book>(BOOK_STORAGE_KEY)
   return storedLibrary.length
     ? storedLibrary
     : legacyBook?.chapters?.length && legacyBook.id !== REMOVED_SAMPLE_BOOK_ID
-      ? [legacyBook]
+      ? [normalizeBookSentences(legacyBook)]
       : []
 }
 
@@ -283,12 +284,20 @@ export default function App() {
     setIsCurrentSentenceVisible,
   } = usePlaybackFlags()
   const [ttsError, setTtsError] = useState<string | null>(null)
+  const [epubError, setEpubError] = useState<string | null>(null)
+  const [readerChromeHidden, setReaderChromeHidden] = useState(false)
 
   useEffect(() => {
     if (!ttsError) return
     const timer = window.setTimeout(() => setTtsError(null), 5000)
     return () => window.clearTimeout(timer)
   }, [ttsError])
+
+  useEffect(() => {
+    if (!epubError) return
+    const timer = window.setTimeout(() => setEpubError(null), 6500)
+    return () => window.clearTimeout(timer)
+  }, [epubError])
 
   useTheme(theme)
 
@@ -741,6 +750,43 @@ export default function App() {
   }
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.matches('input, textarea, select, [contenteditable]')) return
+
+      if (event.code === 'Space') {
+        event.preventDefault()
+        if (isPlaying) stopPlayback()
+        else startPlayback()
+        return
+      }
+
+      if (mode !== 'scroll') return
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        skipSentence(-1)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        skipSentence(1)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
+  useEffect(() => {
+    const onPointerUp = (event: PointerEvent) => {
+      const button = (event.target as Element | null)?.closest('button')
+      button?.blur()
+    }
+
+    document.addEventListener('pointerup', onPointerUp, true)
+    return () => document.removeEventListener('pointerup', onPointerUp, true)
+  }, [])
+
+  useEffect(() => {
     speedRef.current = speed
     if (audioRef.current) audioRef.current.playbackRate = speed
   }, [speed])
@@ -757,11 +803,12 @@ export default function App() {
   const handleOpenEpub = async (file: File | undefined) => {
     if (!file) return
     setIsLoadingBook(true)
+    setEpubError(null)
     closeOverlay('library')
     try {
-      const nextBook = await loadEpub(file)
+      const nextBook = normalizeBookSentences(await loadEpub(file))
       if (nextBook.chapters.length === 0) {
-        window.alert('No readable chapters found in this EPUB.')
+        setEpubError('No readable chapters found in this EPUB.')
         return
       }
       setLibrary((books) => [nextBook, ...books.filter((book) => book.id !== nextBook.id)])
@@ -774,7 +821,7 @@ export default function App() {
     } catch (error) {
       console.error(error)
       const message = error instanceof Error ? error.message : 'Unknown error'
-      window.alert(`Could not open this EPUB. ${message}`)
+      setEpubError(`Could not open this EPUB. ${message}`)
     } finally {
       setIsLoadingBook(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -819,6 +866,7 @@ export default function App() {
           book={book}
           chapter={chapter}
           mode={mode}
+          hidden={readerChromeHidden}
           onModeChange={setMode}
           onOpenLibrary={() => {
             closeOverlay('toc')
@@ -868,6 +916,17 @@ export default function App() {
         </div>
       )}
 
+      {epubError && (
+        <div
+          role="alert"
+          className="surface-floating fixed inset-x-0 top-20 z-40 mx-auto flex w-fit max-w-[min(26rem,calc(100vw-2rem))] animate-(--animate-toast-in) items-start gap-2 px-4 py-2.5 text-sm leading-5 text-zinc-700 dark:text-zinc-200"
+          style={{ transformOrigin: 'top center' }}
+        >
+          <span className="mt-2 size-1.5 shrink-0 rounded-full bg-red-500/80 dark:bg-red-400/80" />
+          <span>{epubError}</span>
+        </div>
+      )}
+
       <main>
         {isLoadingBook ? (
           <BookLoadingView />
@@ -895,6 +954,7 @@ export default function App() {
             scrollRequest={scrollRequest}
             syncKey={syncKey}
             onCurrentSentenceVisibilityChange={setIsCurrentSentenceVisible}
+            chromeHidden={readerChromeHidden}
           />
         )}
       </main>
@@ -927,6 +987,8 @@ export default function App() {
             onToggleCounterMode: () => setCounterMode((m) => (m === 'chapter' ? 'book' : 'chapter')),
             onSeek: seekToProgress,
           }}
+          chromeHidden={readerChromeHidden}
+          onChromeHiddenChange={setReaderChromeHidden}
         />
       )}
 

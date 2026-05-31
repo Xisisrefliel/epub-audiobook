@@ -111,6 +111,7 @@ type Props = {
   onBookmarkPagesChange: (pages: Record<string, BookmarkPageInfo>) => void;
   syncKey: number;
   onCurrentSentenceVisibilityChange: (visible: boolean) => void;
+  chromeHidden: boolean;
 };
 
 export function ReaderPaginated({
@@ -132,6 +133,7 @@ export function ReaderPaginated({
   onBookmarkPagesChange,
   syncKey,
   onCurrentSentenceVisibilityChange,
+  chromeHidden,
 }: Props) {
   const chapter = book.chapters[chapterIndex];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -597,8 +599,13 @@ export function ReaderPaginated({
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.matches("input, textarea, [contenteditable]")) return;
-      if (e.key === "ArrowRight") goNext();
-      else if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goNext();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrev();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -825,6 +832,7 @@ export function ReaderPaginated({
           onNext={goNext}
           pageIndex={pageIndex}
           chapterTotal={chapterTotal}
+          chromeHidden={chromeHidden}
         />
       </div>
     </div>
@@ -1169,43 +1177,73 @@ function PageNav({
   onNext,
   pageIndex,
   chapterTotal,
+  chromeHidden,
 }: {
   onPrev: () => void;
   onNext: () => void;
   pageIndex: number;
   chapterTotal: number;
+  chromeHidden: boolean;
 }) {
+  const label = chapterTotal > 0
+    ? `${Math.min(pageIndex + 1, chapterTotal)} / ${chapterTotal}`
+    : "—";
+
   return (
     <div
-      data-reader-chrome="bottom"
+      data-reader-chrome={chromeHidden ? undefined : "bottom"}
       data-page-nav="true"
       className="pointer-events-none fixed inset-x-0 z-40 px-3 sm:px-4"
       style={{ bottom: 'calc(var(--playback-bar-height, 5.5rem) + 0.5rem)' }}
     >
-      <div className="surface-floating pointer-events-auto mx-auto flex max-w-sm items-center gap-1.5 px-1.5 py-1 sm:max-w-3xl sm:gap-3 sm:px-3 sm:py-2">
+      <div
+        className={
+          "surface-floating pointer-events-auto mx-auto flex transform-gpu items-center transition-[max-width,padding,gap,opacity,transform] duration-[260ms] ease-(--ease-out-strong) " +
+          (chromeHidden
+            ? "max-w-[9rem] gap-1 px-1 py-1 opacity-55 hoverable:hover:opacity-90"
+            : "max-w-sm gap-1.5 px-1.5 py-1 opacity-100 sm:max-w-3xl sm:gap-3 sm:px-3 sm:py-2")
+        }
+      >
         <button
           type="button"
           onClick={onPrev}
           aria-label="Previous page"
-          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-100 px-2 text-xs font-medium text-zinc-700 shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:bg-zinc-950 dark:text-zinc-300 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hoverable:hover:text-zinc-50 sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm"
+          title="Previous page"
+          className={
+            "flex shrink-0 items-center justify-center rounded-full font-medium text-zinc-700 transition-[background-color,color,transform,width,padding] duration-150 ease-(--ease-out-strong) active:scale-[0.97] hoverable:hover:text-zinc-900 dark:text-zinc-300 dark:hoverable:hover:text-zinc-50 " +
+            (chromeHidden
+              ? "size-8 bg-transparent px-0"
+              : "h-8 flex-1 gap-0.5 bg-zinc-100 px-2 text-xs shadow-[inset_0_1px_1px_rgba(0,0,0,0.04)] dark:bg-zinc-950 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm")
+          }
         >
           <ChevronLeft className="size-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
-          Prev
+          <span className={chromeHidden ? "sr-only" : ""}>Prev</span>
         </button>
 
-        <div className="flex h-8 min-w-12 shrink-0 items-center justify-center px-1.5 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400 sm:h-10 sm:min-w-14 sm:flex-1 sm:px-2 sm:text-xs">
-          {chapterTotal > 0
-            ? `${Math.min(pageIndex + 1, chapterTotal)} / ${chapterTotal}`
-            : "—"}
+        <div
+          className={
+            "flex h-8 shrink-0 items-center justify-center tabular-nums text-zinc-500 transition-[min-width,padding,font-size] duration-[260ms] ease-(--ease-out-strong) dark:text-zinc-400 " +
+            (chromeHidden
+              ? "min-w-11 px-0.5 text-[10px]"
+              : "min-w-12 px-1.5 text-[11px] sm:h-10 sm:min-w-14 sm:flex-1 sm:px-2 sm:text-xs")
+          }
+        >
+          {label}
         </div>
 
         <button
           type="button"
           onClick={onNext}
           aria-label="Next page"
-          className="flex h-8 flex-1 items-center justify-center gap-0.5 rounded-full bg-zinc-900 px-2 text-xs font-medium text-white transition-[background-color,color,transform] duration-150 ease-(--ease-out-strong) active:scale-[0.94] sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm dark:bg-zinc-50 dark:text-zinc-950"
+          title="Next page"
+          className={
+            "flex shrink-0 items-center justify-center rounded-full font-medium transition-[background-color,color,transform,width,padding] duration-150 ease-(--ease-out-strong) active:scale-[0.94] " +
+            (chromeHidden
+              ? "size-8 bg-transparent px-0 text-zinc-700 hoverable:hover:text-zinc-900 dark:text-zinc-300 dark:hoverable:hover:text-zinc-50"
+              : "h-8 flex-1 gap-0.5 bg-zinc-900 px-2 text-xs text-white sm:h-10 sm:flex-none sm:gap-1 sm:px-4 sm:text-sm dark:bg-zinc-50 dark:text-zinc-950")
+          }
         >
-          Next
+          <span className={chromeHidden ? "sr-only" : ""}>Next</span>
           <ChevronRight className="size-3.5 sm:h-4 sm:w-4" strokeWidth={2.25} />
         </button>
       </div>

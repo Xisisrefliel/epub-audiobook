@@ -2,6 +2,9 @@ const sentenceSegmenter = 'Segmenter' in Intl
   ? new Intl.Segmenter(undefined, { granularity: 'sentence' })
   : null
 
+const ORPHAN_CLOSING_MARKS = /^[\p{Pe}"'’”»›]+$/u
+const LEADING_CLOSING_MARKS = /^([\p{Pe}"'’”»›]+)\s+(.+)$/u
+
 export function splitSentences(text: string): string[] {
   const normalized = text
     .replace(/\s+/g, ' ')
@@ -13,14 +16,36 @@ export function splitSentences(text: string): string[] {
   if (!normalized) return []
 
   if (sentenceSegmenter) {
-    return Array.from(sentenceSegmenter.segment(normalized)).flatMap((s) => {
+    return mergeOrphanClosingMarks(Array.from(sentenceSegmenter.segment(normalized)).flatMap((s) => {
       const sentence = s.segment.trim()
       return sentence ? [sentence] : []
-    })
+    }))
   }
 
-  return normalized.split(/(?<=[.!?])\s+/).flatMap((s) => {
+  return mergeOrphanClosingMarks(normalized.split(/(?<=[.!?])\s+/).flatMap((s) => {
     const sentence = s.trim()
     return sentence ? [sentence] : []
-  })
+  }))
+}
+
+function mergeOrphanClosingMarks(segments: string[]) {
+  const sentences: string[] = []
+
+  for (const segment of segments) {
+    if (ORPHAN_CLOSING_MARKS.test(segment) && sentences.length > 0) {
+      sentences[sentences.length - 1] = `${sentences[sentences.length - 1]}${segment}`
+      continue
+    }
+
+    const leadingMarks = segment.match(LEADING_CLOSING_MARKS)
+    if (leadingMarks && sentences.length > 0) {
+      sentences[sentences.length - 1] = `${sentences[sentences.length - 1]}${leadingMarks[1]}`
+      sentences.push(leadingMarks[2])
+      continue
+    }
+
+    sentences.push(segment)
+  }
+
+  return sentences
 }

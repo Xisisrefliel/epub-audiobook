@@ -104,10 +104,10 @@ export function ReaderScroll({
     const offsets = new Array(lines.length + 1)
     offsets[0] = 0
     for (let i = 0; i < lines.length; i++) {
-      offsets[i + 1] = offsets[i] + getEstimatedLineBlockHeight(lines[i], i, displayFontSize, lineHeightPx)
+      offsets[i + 1] = offsets[i] + getEstimatedLineBlockHeight(lines[i], i, lineHeightPx)
     }
     return offsets
-  }, [displayFontSize, lineHeightPx, lines])
+  }, [lineHeightPx, lines])
 
   const prevUpdatingRef = useRef(false)
   useEffect(() => {

@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { sampleBook } from '../data/sampleChapter'
 import { readLibraryFromDb } from '../storage/libraryDb'
 import type { Book, CounterMode } from '../types'
+
+const REMOVED_SAMPLE_BOOK_ID = 'alice'
 
 type StoredProgress = {
   chapterIndex?: number
@@ -26,8 +27,8 @@ export function useLoadLibraryFromDb({
   markLoadedRef: React.MutableRefObject<boolean>
   readProgressByBook: () => Record<string, StoredProgress>
   onLibraryChange: React.Dispatch<React.SetStateAction<Book[]>>
-  onActiveBookIdChange: React.Dispatch<React.SetStateAction<string>>
-  onBookChange: React.Dispatch<React.SetStateAction<Book>>
+  onActiveBookIdChange: React.Dispatch<React.SetStateAction<string | null>>
+  onBookChange: React.Dispatch<React.SetStateAction<Book | null>>
   onChapterIndexChange: React.Dispatch<React.SetStateAction<number>>
   onCurrentSentenceIdChange: React.Dispatch<React.SetStateAction<string | null>>
   onLocationSentenceIdChange: React.Dispatch<React.SetStateAction<string | null>>
@@ -38,13 +39,12 @@ export function useLoadLibraryFromDb({
     readLibraryFromDb()
       .then((storedLibrary) => {
         if (cancelled) return
-        const dbLibrary = storedLibrary?.filter((storedBook) => storedBook?.chapters?.length) ?? []
+        const dbLibrary =
+          storedLibrary?.filter((storedBook) => storedBook?.chapters?.length && storedBook.id !== REMOVED_SAMPLE_BOOK_ID) ?? []
         if (!dbLibrary.length) return
-        const nextLibrary = dbLibrary.some((storedBook) => storedBook.id === sampleBook.id)
-          ? dbLibrary
-          : [sampleBook, ...dbLibrary]
         const storedActiveBookId = window.localStorage.getItem(activeBookStorageKey)
-        const nextBook = nextLibrary.find((candidate) => candidate.id === storedActiveBookId) ?? nextLibrary[0] ?? sampleBook
+        const nextBook = dbLibrary.find((candidate) => candidate.id === storedActiveBookId) ?? dbLibrary[0] ?? null
+        if (!nextBook) return
         const progress = readProgressByBook()[nextBook.id]
         const nextChapterIndex = Math.max(0, Math.min(nextBook.chapters.length - 1, progress?.chapterIndex ?? 0))
         const hasProgressLocation = progress?.locationSentenceId
@@ -55,7 +55,7 @@ export function useLoadLibraryFromDb({
             )
           : false
         const fallbackLocationId = nextBook.chapters[nextChapterIndex]?.paragraphs[0]?.sentences[0]?.id ?? null
-        onLibraryChange(nextLibrary)
+        onLibraryChange(dbLibrary)
         onActiveBookIdChange(nextBook.id)
         onBookChange(nextBook)
         onChapterIndexChange(nextChapterIndex)

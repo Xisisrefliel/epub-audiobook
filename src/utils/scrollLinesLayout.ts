@@ -19,6 +19,12 @@ export type ScrollTypography = {
   lineHeight: number
 }
 
+// Keep these in sync with ReaderScroll's `py-1.5` sentence spans and
+// chapter heading classes; virtual spacers must match rendered block height.
+const SENTENCE_VERTICAL_PAD_PX = 12
+const CHAPTER_HEADING_LINE_HEIGHT_PX = 25
+const CHAPTER_HEADING_MARGIN_BOTTOM_PX = 32
+
 const fullLinesCache = new WeakMap<Book, Map<string, ScrollLineFragment[]>>()
 const chapterLinesCache = new WeakMap<Book, Map<string, ScrollLineFragment[][]>>()
 
@@ -142,15 +148,12 @@ export async function buildScrollLinesAsync(
 export function getEstimatedLineBlockHeight(
   line: ScrollLineFragment,
   index: number,
-  fontSize: number,
   lineHeightPx: number,
 ) {
-  let height = lineHeightPx
+  let height = lineHeightPx + SENTENCE_VERTICAL_PAD_PX
   if (index > 0 && line.startsParagraph && !line.startsChapter) height += lineHeightPx
   if (line.chapterTitle) {
-    const headingLineHeight = Math.max(28, fontSize * 1.25)
-    const headingTop = index === 0 ? 0 : 64
-    height += headingTop + 32 + headingLineHeight
+    height += CHAPTER_HEADING_MARGIN_BOTTOM_PX + CHAPTER_HEADING_LINE_HEIGHT_PX
   }
   return height
 }

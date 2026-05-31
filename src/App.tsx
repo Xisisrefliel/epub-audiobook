@@ -8,7 +8,7 @@ import { TableOfContents } from './components/TableOfContents'
 import { BookmarksMenu, type BookmarkMenuItem } from './components/BookmarksMenu'
 import { BookLibrary } from './components/BookLibrary'
 import { BookLoadingView } from './components/BookLoadingView'
-import { sampleBook } from './data/sampleChapter'
+import { EmptyLibraryView } from './components/EmptyLibraryView'
 import { loadEpub } from './epub/loadEpub'
 import { defaultTtsConfig, getSpeechAudio, prefetchSpeech, ttsErrorMessage } from './tts/kokoroTts'
 import type { TtsAudio } from './tts/kokoroTts'
@@ -33,6 +33,7 @@ const BOOKMARKS_BY_BOOK_STORAGE_KEY = `${STORAGE_PREFIX}bookmarksByBook`
 const SETTINGS_STORAGE_KEY = `${STORAGE_PREFIX}settings`
 const PREFETCH_AHEAD_SENTENCES = 4
 const BUFFERING_DELAY_MS = 350
+const REMOVED_SAMPLE_BOOK_ID = 'alice'
 
 type StoredProgress = {
   chapterIndex?: number
@@ -121,10 +122,14 @@ function readStoredPlaybackSpeed(settings = readJson<StoredSettings>(SETTINGS_ST
 }
 
 function readStoredLibrary() {
-  const storedLibrary = readJson<Book[]>(LIBRARY_STORAGE_KEY)?.filter((book) => book?.chapters?.length) ?? []
+  const storedLibrary =
+    readJson<Book[]>(LIBRARY_STORAGE_KEY)?.filter((book) => book?.chapters?.length && book.id !== REMOVED_SAMPLE_BOOK_ID) ?? []
   const legacyBook = readJson<Book>(BOOK_STORAGE_KEY)
-  const books = storedLibrary.length ? storedLibrary : legacyBook?.chapters?.length ? [legacyBook] : [sampleBook]
-  return books.some((book) => book.id === sampleBook.id) ? books : [sampleBook, ...books]
+  return storedLibrary.length
+    ? storedLibrary
+    : legacyBook?.chapters?.length && legacyBook.id !== REMOVED_SAMPLE_BOOK_ID
+      ? [legacyBook]
+      : []
 }
 
 function readStoredSettings() {
@@ -227,13 +232,16 @@ export default function App() {
     setBookmarksByBook,
   } = useBookState({
     initialLibrary: readStoredLibrary,
-    initialActiveBookId: (initialLibrary) => window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY) ?? initialLibrary[0]?.id ?? sampleBook.id,
-    initialBook: (initialLibrary, initialActiveBookId) => initialLibrary.find((candidate) => candidate.id === initialActiveBookId) ?? initialLibrary[0] ?? sampleBook,
-    initialChapterIndex: (initialBook) => Math.max(0, (progressByBook[initialBook.id] ?? fallbackProgress).chapterIndex ?? 0),
+    initialActiveBookId: (initialLibrary) => {
+      const storedActiveBookId = window.localStorage.getItem(ACTIVE_BOOK_STORAGE_KEY)
+      return initialLibrary.some((book) => book.id === storedActiveBookId) ? storedActiveBookId : initialLibrary[0]?.id ?? null
+    },
+    initialBook: (initialLibrary, initialActiveBookId) => initialLibrary.find((candidate) => candidate.id === initialActiveBookId) ?? initialLibrary[0] ?? null,
+    initialChapterIndex: (initialBook) => Math.max(0, initialBook ? (progressByBook[initialBook.id] ?? fallbackProgress).chapterIndex ?? 0 : 0),
     initialBookmarksByBook: storedBookmarksByBook,
   })
   const hasLoadedLibraryDbRef = useRef(false)
-  const initialProgress = progressByBook[book.id] ?? fallbackProgress
+  const initialProgress = book ? progressByBook[book.id] ?? fallbackProgress : fallbackProgress
   const {
     isLoadingBook,
     setIsLoadingBook,
@@ -281,14 +289,14 @@ export default function App() {
     setScrollRequest({ key: ++scrollRequestKeyRef.current, type: 'chapter', chapterIndex: index })
   }
 
-  const chapter = book.chapters[chapterIndex] ?? book.chapters[0]
+  const chapter = book?.chapters[chapterIndex] ?? book?.chapters[0] ?? null
 
   const sentenceMeta = useMemo(() => {
     const byId = new Map<string, { chapterIndex: number; chapterSentenceIndex: number; bookSentenceIndex: number }>()
-    const chapterSentenceCounts = book.chapters.map((ch) =>
+    const chapterSentenceCounts = book?.chapters.map((ch) =>
       ch.paragraphs.reduce((sum, p) => sum + p.sentences.length, 0),
-    )
-    const sentences = book.chapters.flatMap((ch, chapterIndex) => {
+    ) ?? []
+    const sentences = book?.chapters.flatMap((ch, chapterIndex) => {
       let chapterSentenceIndex = 0
       return ch.paragraphs.flatMap((p) =>
         p.sentences.map((sentence) => {
@@ -298,7 +306,7 @@ export default function App() {
           return sentence
         }),
       )
-    })
+    }) ?? []
     return { byId, chapterSentenceCounts, sentences }
   }, [book])
 
@@ -323,12 +331,14 @@ export default function App() {
   })
   const bookmarkBySentenceId = useMemo(() => {
     const map = new Map<string, Bookmark>()
+    if (!book) return map
     ;(bookmarksByBook[book.id] ?? []).forEach((bookmark) => map.set(bookmark.sentenceId, bookmark))
     return map
-  }, [book.id, bookmarksByBook])
+  }, [book, bookmarksByBook])
 
   const bookmarkMenuItems = useMemo<BookmarkMenuItem[]>(() => {
     const items: BookmarkMenuItem[] = []
+    if (!book) return items
     for (const bookmark of bookmarksByBook[book.id] ?? []) {
       const meta = sentenceMeta.byId.get(bookmark.sentenceId)
       const sentence = sentences[sentenceIndexById.get(bookmark.sentenceId) ?? -1]
@@ -352,7 +362,7 @@ export default function App() {
   const scrollProgressInfo = useMemo<ScrollProgressInfo | null>(() => {
     const anchorId = locationSentenceId ?? currentSentenceId ?? chapter?.paragraphs[0]?.sentences[0]?.id
     const meta = anchorId ? sentenceMeta.byId.get(anchorId) : null
-    if (!meta || sentences.length === 0) return null
+    if (!book || !meta || sentences.length === 0) return null
     return {
       chapterIndex: meta.chapterIndex,
       chapterTotal: book.chapters.length,
@@ -361,7 +371,7 @@ export default function App() {
       bookSentenceIndex: meta.bookSentenceIndex,
       bookSentenceTotal: sentences.length,
     }
-  }, [book.chapters.length, chapter, currentSentenceId, locationSentenceId, sentenceMeta, sentences.length])
+  }, [book, chapter, currentSentenceId, locationSentenceId, sentenceMeta, sentences.length])
 
   useClampReadingPosition({
     book,
@@ -381,10 +391,11 @@ export default function App() {
   }, [mode, theme, fontSize, lineHeight, measure, speed])
 
   useEffect(() => {
+    if (!book) return
     const progress = { chapterIndex, currentSentenceId, locationSentenceId, counterMode }
     writeJson(PROGRESS_STORAGE_KEY, progress)
     writeJson(PROGRESS_BY_BOOK_STORAGE_KEY, { ...readProgressByBook(), [book.id]: progress })
-  }, [book.id, chapterIndex, currentSentenceId, locationSentenceId, counterMode])
+  }, [book, chapterIndex, currentSentenceId, locationSentenceId, counterMode])
 
   useLoadLibraryFromDb({
     activeBookStorageKey: ACTIVE_BOOK_STORAGE_KEY,
@@ -403,7 +414,10 @@ export default function App() {
     if (!hasLoadedLibraryDbRef.current) return
     void writeLibraryToDb(library).catch((error) => console.warn('Could not save library to browser database.', error))
     try {
-      window.localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library.filter((storedBook) => storedBook.id === sampleBook.id)))
+      window.localStorage.setItem(
+        LIBRARY_STORAGE_KEY,
+        JSON.stringify(library.filter((storedBook) => storedBook.id !== REMOVED_SAMPLE_BOOK_ID)),
+      )
     } catch {
       // IndexedDB is the durable storage for uploaded EPUBs; localStorage is just a legacy fallback.
     }
@@ -415,7 +429,8 @@ export default function App() {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(ACTIVE_BOOK_STORAGE_KEY, activeBookId)
+      if (activeBookId) window.localStorage.setItem(ACTIVE_BOOK_STORAGE_KEY, activeBookId)
+      else window.localStorage.removeItem(ACTIVE_BOOK_STORAGE_KEY)
     } catch {
       // Ignore storage failures; the in-memory active book still updates.
     }
@@ -437,6 +452,7 @@ export default function App() {
   }
 
   const selectSentence = (id: string | null, options: { recordHistory?: boolean; scrollOffset?: number } = {}) => {
+    if (!book) return
     if (id && options.recordHistory) recordNavigationTarget(id)
     setCurrentSentenceId(id)
     if (!id) return
@@ -497,6 +513,7 @@ export default function App() {
   }, [])
 
   const toggleBookmark = (sentenceId: string, offset: number) => {
+    if (!book) return
     setBookmarksByBook((current) => {
       const existing = current[book.id] ?? []
       const exists = existing.some((bookmark) => bookmark.sentenceId === sentenceId)
@@ -524,6 +541,7 @@ export default function App() {
   }
 
   const changeChapter = (index: number, edge: 'start' | 'end' = 'start', options: { recordHistory?: boolean } = {}) => {
+    if (!book) return
     abortPrefetches()
     const clamped = Math.max(0, Math.min(book.chapters.length - 1, index))
     const targetChapter = book.chapters[clamped]
@@ -565,6 +583,7 @@ export default function App() {
   }
 
   const seekToProgress = (pct: number) => {
+    if (!book) return
     const clampedPct = Math.max(0, Math.min(1, pct))
     if (sentences.length === 0) return
 
@@ -789,7 +808,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
-      {!isLoadingBook && (
+      {!isLoadingBook && book && chapter && (
         <BookHeader
           book={book}
           chapter={chapter}
@@ -846,6 +865,8 @@ export default function App() {
       <main>
         {isLoadingBook ? (
           <BookLoadingView />
+        ) : !book ? (
+          <EmptyLibraryView onAddBook={() => fileInputRef.current?.click()} />
         ) : (
           <Reader
             book={book}
@@ -871,7 +892,7 @@ export default function App() {
         )}
       </main>
 
-      {!isLoadingBook && (
+      {!isLoadingBook && book && (
         <PlaybackBar
           playback={{
             state: isPlaying ? 'playing' : 'paused',
@@ -905,23 +926,25 @@ export default function App() {
       <BookLibrary
         open={libraryOpen}
         books={library}
-        currentBookId={book.id}
+        currentBookId={book?.id ?? ''}
         onClose={() => closeOverlay('library')}
         onAddBook={() => fileInputRef.current?.click()}
         onSelectBook={selectBookFromLibrary}
       />
 
-      <TableOfContents
-        book={book}
-        currentChapterIndex={chapterIndex}
-        open={tocOpen}
-        onClose={() => closeOverlay('toc')}
-        onSelectChapter={(index) => changeChapter(index, 'start', { recordHistory: true })}
-      />
+      {book && (
+        <TableOfContents
+          book={book}
+          currentChapterIndex={chapterIndex}
+          open={tocOpen}
+          onClose={() => closeOverlay('toc')}
+          onSelectChapter={(index) => changeChapter(index, 'start', { recordHistory: true })}
+        />
+      )}
 
       <BookmarksMenu
         open={bookmarksOpen}
-        bookTitle={book.title}
+        bookTitle={book?.title ?? 'Bookmarks'}
         items={bookmarkMenuItems}
         onClose={() => closeOverlay('bookmarks')}
         onSelectBookmark={selectBookmark}
